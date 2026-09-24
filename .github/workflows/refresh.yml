@@ -34,8 +34,7 @@ jobs:
           # Manual keeper-round overrides ESPN's API doesn't expose (this
           # league runs keeper selection outside any queryable draft/
           # transaction record). {"<league_id>": {"<espn player id>": <round>}}
-          # -- 3150744 is Ja'Marr Chase, kept into 2026 at a round-1 cost.
-          ESPN_KEEPER_OVERRIDES: '{"610033022": {"3150744": 1}}'
+          ESPN_KEEPER_OVERRIDES: '{}'
         run: python fetch/build_data.py
       - name: Check the output
         run: python fetch/check_output.py

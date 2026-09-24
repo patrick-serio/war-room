@@ -16,10 +16,18 @@ def main():
     notes = []
     leagues, players = espn.fetch(["610033022", "43688494"], season, week, notes)
     print(f"notes: {notes}")
-    chase = players.get("espn:610033022:3150744")
-    print(f"Chase: {json.dumps(chase)}")
-    assert chase and chase.get("kprd") == 1, f"expected kprd=1, got {chase.get('kprd') if chase else 'MISSING'}"
-    print("OK: override applied correctly")
+
+    # BUG CAUGHT: a loose "Chase" in name substring match previously matched
+    # Chase McLaughlin (a kicker), not Ja'Marr Chase (WR, CIN). Re-find him
+    # properly by exact full name + position + team this time.
+    real_chase = [(pid, p) for pid, p in players.items()
+                  if pid.startswith("espn:610033022:") and p.get("n") == "Ja'Marr Chase"]
+    print(f"players named exactly 'Ja'Marr Chase' on Belichicks Receivers: {len(real_chase)}")
+    for pid, p in real_chase:
+        print(f"  {pid} -> {json.dumps(p)}")
+
+    wrong_one = players.get("espn:610033022:3150744")
+    print(f"\nespn:610033022:3150744 (the id I'd been using) is actually: {json.dumps(wrong_one)}")
 
 
 if __name__ == "__main__":
