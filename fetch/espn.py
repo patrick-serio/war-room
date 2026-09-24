@@ -78,18 +78,35 @@ def week_total(stats, source, week, season):
 
 
 def fetch_pro_teams(session, season):
-    """proTeamId -> abbreviation (e.g. 2 -> "BUF"), straight from the fantasy
-    API's own namespace so it always matches player.proTeamId exactly."""
+    """(proTeamId -> abbreviation, proTeamId -> {week: opponent abbreviation}),
+    straight from the fantasy API's own namespace so it always matches
+    player.proTeamId exactly, and shared across all ESPN leagues since it's
+    season-scoped, not league-scoped."""
     url = f"https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{season}"
     try:
         d = http_get(session, url, params={"view": "proTeamSchedules"})
     except RuntimeError:
-        return {}
+        return {}, {}
     teams = d.get("settings", {}).get("proTeamSchedules") or d.get("settings", {}).get("proTeams") or []
-    return {t["id"]: t["abbrev"] for t in teams if "id" in t and "abbrev" in t}
+    abbrev = {t["id"]: t["abbrev"] for t in teams if "id" in t and "abbrev" in t}
+    opp_by_week = {}
+    for t in teams:
+        tid = t.get("id")
+        if tid is None:
+            continue
+        weekly = {}
+        for wk, games in (t.get("proGamesByScoringPeriod") or {}).items():
+            for g in games or []:
+                home, away = g.get("homeProTeamId"), g.get("awayProTeamId")
+                other = away if home == tid else home if away == tid else None
+                if other is not None:
+                    weekly[int(wk)] = abbrev.get(other)
+                    break
+        opp_by_week[tid] = weekly
+    return abbrev, opp_by_week
 
 
-def build_player(pid_prefix, pool_entry, week, season, pro_teams):
+def build_player(pid_prefix, pool_entry, week, season, pro_teams, pro_opp):
     p = pool_entry.get("player") or pool_entry
     if not p or "id" not in p:
         return None
@@ -105,15 +122,16 @@ def build_player(pid_prefix, pool_entry, week, season, pro_teams):
         if v is not None:
             recent.append({"pt": v})
     inj = INJ_MAP.get(p.get("injuryStatus"))
+    team_id = p.get("proTeamId")
     return pid, {
-        "n": p.get("fullName") or pid, "pos": pos, "tm": pro_teams.get(p.get("proTeamId")), "age": None,
-        "inj": inj, "rank": None, "opp": None,
+        "n": p.get("fullName") or pid, "pos": pos, "tm": pro_teams.get(team_id), "age": None,
+        "inj": inj, "rank": None, "opp": (pro_opp.get(team_id) or {}).get(week),
         "p": {"pt": proj} if proj is not None else None,
         "r": recent, "tgt": [], "tch": [],
     }
 
 
-def fetch_free_agents(session, base, league_id, week, season, rostered, notes, league_name, pro_teams):
+def fetch_free_agents(session, base, league_id, week, season, rostered, notes, league_name, pro_teams, pro_opp):
     filt = {"players": {
         "filterStatus": {"value": ["FREEAGENT", "WAIVERS"]},
         "limit": 150,
@@ -127,7 +145,7 @@ def fetch_free_agents(session, base, league_id, week, season, rostered, notes, l
         return [], {}
     pool_ids, players = [], {}
     for entry in d.get("players", []):
-        res = build_player("espn:", entry, week, season, pro_teams)
+        res = build_player("espn:", entry, week, season, pro_teams, pro_opp)
         if not res:
             continue
         pid, pdata = res
@@ -138,7 +156,7 @@ def fetch_free_agents(session, base, league_id, week, season, rostered, notes, l
     return pool_ids, players
 
 
-def build_league(session, league_id, season, week, notes, pro_teams):
+def build_league(session, league_id, season, week, notes, pro_teams, pro_opp):
     base = league_base(session, league_id, season)
     if not base:
         notes.append(f"ESPN league {league_id}: could not reach the API")
@@ -178,7 +196,7 @@ def build_league(session, league_id, season, week, notes, pro_teams):
         by_slot = {}
         active_ids, reserve_ids = [], []
         for e in entries:
-            res = build_player("espn:", e.get("playerPoolEntry", {}), week, season, pro_teams)
+            res = build_player("espn:", e.get("playerPoolEntry", {}), week, season, pro_teams, pro_opp)
             if not res:
                 continue
             pid, pdata = res
@@ -225,7 +243,7 @@ def build_league(session, league_id, season, week, notes, pro_teams):
             break
 
     rostered = set(players)
-    fa_ids, fa_players = fetch_free_agents(session, base, league_id, week, season, rostered, notes, league_name, pro_teams)
+    fa_ids, fa_players = fetch_free_agents(session, base, league_id, week, season, rostered, notes, league_name, pro_teams, pro_opp)
     players.update(fa_players)
 
     league = {
@@ -245,11 +263,11 @@ def fetch(league_ids, season, week, notes):
     if not swid or not espn_s2 or not league_ids:
         return [], {}
     session = make_session(swid, espn_s2)
-    pro_teams = fetch_pro_teams(session, season)
+    pro_teams, pro_opp = fetch_pro_teams(session, season)
     leagues, players = [], {}
     for lid in league_ids:
         try:
-            lg, lg_players = build_league(session, lid, season, week, notes, pro_teams)
+            lg, lg_players = build_league(session, lid, season, week, notes, pro_teams, pro_opp)
         except Exception as e:  # noqa: BLE001 -- one bad ESPN league shouldn't sink the whole run
             notes.append(f"ESPN league {lid}: {e}")
             continue
