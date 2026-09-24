@@ -139,6 +139,16 @@ h2 .n { font-family: var(--body); letter-spacing: 0; font-weight: 500; text-tran
 .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
 .label { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
 .ctl { display: flex; flex-direction: column; gap: 6px; }
+.search {
+  width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--surface); font: inherit; color: var(--ink); min-height: 44px;
+}
+.search:focus, .search:focus-visible { outline: 2px solid var(--accent); outline-offset: -1px; }
+.search::placeholder { color: var(--ink-2); }
+.search-results { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 8px; }
+.search-results button { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 12px; background: var(--surface); border: 0; text-align: left; cursor: pointer; min-height: 48px; }
+.search-results .pname { display: flex; align-items: center; gap: 6px; font-weight: 500; min-width: 0; }
+.search-results .sub { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 
 /* position report */
 .rep { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }

@@ -417,12 +417,16 @@
       if (opp.roster_id === me.roster_id) continue;
       const baseThem = optimalLineup(ctx, activeOf(opp)).total;
       const oppActive = activeOf(opp);
+      // Targeting specific players (playerIds): find offers for exactly those
+      // guys, whatever their value -- the user already decided they want them,
+      // so skip the "must be a notable asset" floor used for open-ended scans.
       const targets = opp.players
-        .filter((p) => ctx.players[p] && TRADE_POS.includes(ctx.players[p].pos) && (!o.pos || ctx.players[p].pos === o.pos))
+        .filter((p) => ctx.players[p] && TRADE_POS.includes(ctx.players[p].pos)
+          && (o.playerIds ? o.playerIds.includes(p) : (!o.pos || ctx.players[p].pos === o.pos)))
         .map((p) => ({ pid: p, v: valueOf(ctx, p) }))
-        .filter((t) => t.v >= 12)
+        .filter((t) => o.playerIds || t.v >= 12)
         .sort((a, b) => b.v - a.v)
-        .slice(0, 10);
+        .slice(0, o.playerIds ? o.playerIds.length : 10);
       for (const G of targets) {
         combos(pool, maxGive, G.v * 2.2, (give, rawSum) => {
           // Depth is worth less than stars: later assets in a package count for less.
@@ -447,10 +451,14 @@
     results.sort((a, b) => b.score - a.score);
     const perTeam = {};
     const perGet = {};
+    // Targeting specific players: show a few different package ideas per guy
+    // instead of the one-offer-per-player cap used for open-ended scans.
+    const getCap = o.playerIds ? 3 : 1;
+    const teamCap = o.playerIds ? 4 : 2;
     const picked = [];
     for (const r of results) {
       const kt = r.opp.roster_id;
-      if ((perTeam[kt] || 0) >= 2 || (perGet[r.get] || 0) >= 1) continue;
+      if ((perTeam[kt] || 0) >= teamCap || (perGet[r.get] || 0) >= getCap) continue;
       perTeam[kt] = (perTeam[kt] || 0) + 1;
       perGet[r.get] = (perGet[r.get] || 0) + 1;
       picked.push(decorate(ctx, r));
