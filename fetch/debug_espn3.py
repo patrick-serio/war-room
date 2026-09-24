@@ -65,6 +65,25 @@ def main():
         if any(n.lower() in nm.lower() for n in NAMES):
             print(f"FRESH via espn.fetch(): {pid} -> {json.dumps(p)}")
 
+    # dump the RAW stats[] array straight from the roster fetch, in case there
+    # are multiple entries matching (statSourceId=1, scoringPeriodId=week,
+    # seasonId=season) and week_total()'s first-match scan is order-dependent
+    print("\n--- raw stats[] dump (direct roster fetch, no filtering) ---")
+    session = espn.make_session(os.environ["ESPN_SWID"], os.environ["ESPN_S2"])
+    base = espn.league_base(session, "610033022", season)
+    d = espn.http_get(session, f"{base}/610033022", params={"view": ["mRoster", "mTeam"]})
+    for t in d.get("teams", []):
+        for e in (t.get("roster") or {}).get("entries", []):
+            p = (e.get("playerPoolEntry") or {}).get("player") or {}
+            if "Allen" not in p.get("fullName", ""):
+                continue
+            stats = p.get("stats") or []
+            matches = [st for st in stats if st.get("statSourceId") == 1
+                       and st.get("scoringPeriodId") == week and st.get("seasonId") == season]
+            print(f"{p.get('fullName')}: {len(matches)} entries match (source=1,week={week},season={season})")
+            for st in matches:
+                print(f"  {json.dumps({k: st.get(k) for k in ('id', 'statSourceId', 'statSplitTypeId', 'scoringPeriodId', 'seasonId', 'appliedTotal')})}")
+
 
 if __name__ == "__main__":
     main()
