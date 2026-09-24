@@ -39,6 +39,24 @@ def main():
     else:
         print("\nJa'Marr Chase not found on Belichicks Receivers rosters (may not be on this team's or any roster)")
 
+    # targeted raw check: is Chase (real ESPN id 3150744) actually in draftDetail.picks?
+    print("\n--- raw draftDetail.picks check for Chase (id 3150744) ---")
+    session = espn.make_session(os.environ["ESPN_SWID"], os.environ["ESPN_S2"])
+    base = espn.league_base(session, "610033022", season)
+    d = espn.http_get(session, f"{base}/610033022",
+                       params={"view": ["mSettings", "mTeam", "mRoster", "mMatchupScore", "mStatus", "mDraftDetail"]})
+    picks = d.get("draftDetail", {}).get("picks", [])
+    print(f"total picks: {len(picks)}")
+    chase_picks = [pk for pk in picks if pk.get("playerId") == 3150744]
+    print(f"picks with playerId=3150744: {len(chase_picks)}")
+    for pk in chase_picks:
+        print(json.dumps(pk))
+    # also check which team currently rosters him and his roster entry shape
+    for t in d.get("teams", []):
+        for e in (t.get("roster") or {}).get("entries", []):
+            if e.get("playerId") == 3150744:
+                print(f"rostered on team {t['id']}, entry: {json.dumps({k: v for k, v in e.items() if k != 'playerPoolEntry'})}")
+
     # Cod Squad should NOT be a keeper league
     cod_players = {pid: p for pid, p in players.items() if pid.startswith("espn:43688494:")}
     cod_with_rd = sum(1 for p in cod_players.values() if p.get("kprd") is not None)
