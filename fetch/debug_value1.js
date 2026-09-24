@@ -37,8 +37,24 @@ function fetchJSON(url) {
   console.log('\nhow many of MY roster players clear v>=4 (trade asset floor)?');
   console.log(rows.filter((r) => r.v >= 4).length, '/', rows.length);
 
-  console.log('\ntrade offers (scan mode, WR, maxGive 3):');
-  const offers = FF.tradeOffers(ctx, { pos: 'WR', maxGive: 3 });
-  console.log('offers found:', offers.length);
-  offers.slice(0, 3).forEach((o) => console.log(JSON.stringify(o)));
+  console.log('\ntrade offers by position (scan mode, maxGive 3):');
+  for (const pos of ['QB', 'RB', 'WR', 'TE']) {
+    const offers = FF.tradeOffers(ctx, { pos, maxGive: 3 });
+    console.log(`  ${pos}: ${offers.length} offers`);
+  }
+
+  console.log('\nno-position-filter scan (all TRADE_POS), maxGive 3:');
+  const allOffers = FF.tradeOffers(ctx, { maxGive: 3 });
+  console.log('offers found:', allOffers.length);
+  allOffers.slice(0, 3).forEach((o) => console.log(JSON.stringify(o)));
+
+  console.log('\nopposing rosters: how many players clear the v>=12 target floor?');
+  lg.teams.filter((t) => t.roster_id !== lg.me).forEach((t) => {
+    const targets = t.players.filter((p) => D.players[p] && ['QB','RB','WR','TE'].includes(D.players[p].pos))
+      .map((p) => ({ pid: p, v: FF.valueOf(ctx, p) })).filter((x) => x.v >= 12);
+    console.log(`  ${t.name}: ${targets.length} players clear v>=12`, targets.map((x) => `${D.players[x.pid].n}(${x.v})`).join(', '));
+  });
+
+  console.log('\nMY players clearing v>=4 (trade-asset floor), for reference:');
+  console.log(rows.filter((r) => r.v >= 4).map((r) => `${r.n}(${r.v})`).join(', '));
 })().catch((e) => { console.error('FATAL', e); process.exit(1); });
