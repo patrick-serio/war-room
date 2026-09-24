@@ -84,6 +84,41 @@ def main():
             for st in matches:
                 print(f"  {json.dumps({k: st.get(k) for k in ('id', 'statSourceId', 'statSplitTypeId', 'scoringPeriodId', 'seasonId', 'appliedTotal')})}")
 
+    # THEORY: the same player id gets fetched across BOTH ESPN leagues
+    # (rostered in one, free-agent in the other), and since players.update()
+    # in espn.fetch() shares one flat pid namespace across leagues, whichever
+    # league is processed LAST in ESPN_LEAGUE_IDS order clobbers the other
+    # league's correctly-scoped {"pt": N} value for that shared player id --
+    # explaining why only Belichicks Receivers (processed first) shows wrong
+    # numbers while Cod Squad (processed last) is fine, and why it's
+    # specifically QB/K/DST (positions most likely to be free agents in
+    # both leagues at once).
+    print("\n--- cross-league collision check: does Josh Allen appear in Cod Squad (43688494) too? ---")
+    base2 = espn.league_base(session, "43688494", season)
+    filt = {"players": {"filterStatus": {"value": ["FREEAGENT", "WAIVERS"]}, "limit": 400}}
+    try:
+        d2 = espn.http_get(session, f"{base2}/43688494", params={"view": "kona_player_info"},
+                            headers={"x-fantasy-filter": json.dumps(filt)})
+        hits = 0
+        for entry in d2.get("players", []):
+            p = entry.get("player") or entry
+            if p.get("id") == 3918298:
+                hits += 1
+                stats = p.get("stats") or []
+                m = [st for st in stats if st.get("statSourceId") == 1
+                     and st.get("scoringPeriodId") == week and st.get("seasonId") == season]
+                print(f"Josh Allen found in Cod Squad free agents! matching entries: {len(m)}")
+                for st in m:
+                    print(f"  {json.dumps({k: st.get(k) for k in ('id', 'statSourceId', 'appliedTotal')})}")
+        if not hits:
+            print("Josh Allen NOT found in Cod Squad free-agent pool")
+    except Exception as e:
+        print(f"Cod Squad free-agent check failed: {e}")
+
+    both_leagues, both_players = espn.fetch(["610033022", "43688494"], season, week, notes)
+    key = "espn:3918298"
+    print(f"\nespn.fetch() with BOTH league ids in production order: {key} -> {json.dumps(both_players.get(key))}")
+
 
 if __name__ == "__main__":
     main()
