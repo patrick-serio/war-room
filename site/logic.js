@@ -26,16 +26,33 @@
     return 1;
   }
 
-  function form(P, sc) {
-    const r = (P && P.r && P.r[sc]) || [];
-    const v = r.slice(-3);
+  // Score a player's raw projected/actual stat line against the league's own
+  // scoring_settings (per-stat point values), the same way Sleeper's app does.
+  // Sleeper's public projections endpoint also exposes canned std/half/ppr point
+  // totals, but those assume generic default scoring and drift from what a league
+  // with any custom weight (yardage bonuses, a heavier INT penalty, etc) actually
+  // awards -- computing it ourselves from the raw stats matches Sleeper's own
+  // number exactly instead.
+  function scoreOf(stats, scoringSettings) {
+    if (!stats || !scoringSettings) return 0;
+    let t = 0;
+    for (const k in scoringSettings) {
+      const w = scoringSettings[k];
+      if (typeof w === 'number' && stats[k]) t += stats[k] * w;
+    }
+    return t;
+  }
+
+  function form(ctx, P) {
+    const r = (P && P.r) || [];
+    const v = r.slice(-3).map((st) => scoreOf(st, ctx.lg.scoring_settings));
     return v.length ? mean(v) : null;
   }
 
   function makeCtx(D, lg) {
     const players = D.players;
     const hasProj = Object.values(players).some((p) => p.p);
-    return { D, lg, sc: lg.scoring, players, hasProj, dyn: lg.format !== 'redraft', cache: new Map(), vcache: new Map(), _repl: null };
+    return { D, lg, players, hasProj, dyn: lg.format !== 'redraft', cache: new Map(), vcache: new Map(), _repl: null };
   }
 
   // The headline number is Sleeper's own projection (discounted for injury status),
@@ -47,8 +64,8 @@
     const P = ctx.players[pid];
     let v = 0;
     if (P) {
-      const pj = P.p ? P.p[ctx.sc] : null;
-      const fm = form(P, ctx.sc);
+      const pj = P.p ? scoreOf(P.p, ctx.lg.scoring_settings) : null;
+      const fm = form(ctx, P);
       const b = pj != null ? pj : (!ctx.hasProj && fm != null ? fm : 0);
       v = b * injFactor(P.inj);
     }
@@ -167,9 +184,9 @@
     const out = [];
     let lean = 0;
     if (!P) return { out, lean };
-    const pj = P.p ? P.p[ctx.sc] : null;
-    const fm = form(P, ctx.sc);
-    const n = ((P.r && P.r[ctx.sc]) || []).slice(-3).length;
+    const pj = P.p ? scoreOf(P.p, ctx.lg.scoring_settings) : null;
+    const fm = form(ctx, P);
+    const n = (P.r || []).slice(-3).length;
     if (pj != null && fm != null && n >= 2) {
       if (fm - pj >= 2) { out.push(`Averaging ${fm.toFixed(1)} over his last ${n} games, above the ${pj.toFixed(1)} projection`); lean += 0.5; }
       else if (pj - fm >= 2) { out.push(`Averaging only ${fm.toFixed(1)} over his last ${n} games against a ${pj.toFixed(1)} projection`); lean -= 0.5; }

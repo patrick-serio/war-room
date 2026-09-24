@@ -21,7 +21,6 @@ PROJ_API = os.environ.get("SLEEPER_PROJ_API", "https://api.sleeper.com").rstrip(
 USERNAME = os.environ.get("SLEEPER_USERNAME", "PatrickSerio")
 OUT = os.environ.get("OUT_PATH", "site/data/leagues.json")
 POS = ["QB", "RB", "WR", "TE", "K", "DEF"]
-SCORE_KEYS = {"ppr": "pts_ppr", "half": "pts_half_ppr", "std": "pts_std"}
 
 SESSION = requests.Session()
 SESSION.headers["User-Agent"] = "fantasy-hq/1.0 (personal use)"
@@ -65,28 +64,47 @@ def pos_params(extra):
     return [("season_type", "regular")] + [("position[]", p) for p in POS] + extra
 
 
-def fetch_projections(season, week):
-    """pid -> {opp, tm, ppr, half, std}"""
+def score_from_stats(stats, scoring_settings):
+    """Dot-product a player's raw projected/actual stats against a league's own
+    scoring_settings. This is what Sleeper's app itself does; their public
+    projections endpoint's canned pts_ppr/pts_half_ppr/pts_std buckets assume
+    generic default scoring and can be meaningfully off for a league with any
+    custom weights (different INT penalty, yardage bonuses, etc)."""
+    if not stats or not scoring_settings:
+        return 0.0
+    return sum((stats.get(k) or 0) * w for k, w in scoring_settings.items() if isinstance(w, (int, float)))
+
+
+def raw_stats(st, stat_keys):
+    """Keep only the numeric stat fields any of the user's leagues actually score,
+    dropping metadata (adp, games-played, etc) and zero values to stay compact."""
+    out = {}
+    for k in stat_keys:
+        v = num(st.get(k))
+        if v:
+            out[k] = r2(v)
+    return out
+
+
+def fetch_projections(season, week, stat_keys):
+    """pid -> {opp, tm, st}"""
     data = http_get(f"{PROJ_API}/projections/nfl/{season}/{week}",
                     params=pos_params([("order_by", "pts_ppr")]))
     out = {}
     for it in data:
         pid = str(it.get("player_id", ""))
         st = it.get("stats") or {}
-        ppr = num(st.get("pts_ppr"))
-        if not pid or ppr is None:
+        if not pid or not st:
             continue
         out[pid] = {
             "opp": it.get("opponent"),
             "tm": it.get("team"),
-            "ppr": r2(ppr),
-            "half": r2(num(st.get("pts_half_ppr"))),
-            "std": r2(num(st.get("pts_std"))),
+            "st": raw_stats(st, stat_keys),
         }
     return out
 
 
-def fetch_recent(season, week, lookback=4):
+def fetch_recent(season, week, stat_keys, lookback=4):
     """pid -> list of weekly dicts, oldest first, only weeks the player has stats."""
     per = {}
     for wk in range(max(1, week - lookback), week):
@@ -99,16 +117,12 @@ def fetch_recent(season, week, lookback=4):
         for it in data:
             pid = str(it.get("player_id", ""))
             st = it.get("stats") or {}
-            ppr = num(st.get("pts_ppr"))
-            if not pid or ppr is None:
+            if not pid or not st:
                 continue
             rush = num(st.get("rush_att")) or 0
             rec = num(st.get("rec")) or 0
             per.setdefault(pid, []).append({
-                "wk": wk,
-                "ppr": r2(ppr),
-                "half": r2(num(st.get("pts_half_ppr"))),
-                "std": r2(num(st.get("pts_std"))),
+                "st": raw_stats(st, stat_keys),
                 "tgt": num(st.get("rec_tgt")) or 0,
                 "tch": rush + rec,
             })
@@ -136,12 +150,9 @@ def build_player(pid, base, proj, recent):
         name = f"{base.get('first_name', '')} {base.get('last_name', '')}".strip() or pid
         tm = base.get("team")
     rank = base.get("search_rank")
-    rec = {"ppr": [], "half": [], "std": []}
-    tgt, tch = [], []
+    r, tgt, tch = [], [], []
     for w in (recent or [])[-4:]:
-        for k in rec:
-            if w.get(k) is not None:
-                rec[k].append(w[k])
+        r.append(w["st"])
         tgt.append(w["tgt"])
         tch.append(w["tch"])
     p = proj or {}
@@ -150,8 +161,8 @@ def build_player(pid, base, proj, recent):
         "inj": base.get("injury_status"),
         "rank": rank if isinstance(rank, int) and rank < 900000 else None,
         "opp": p.get("opp"),
-        "p": {"ppr": p.get("ppr"), "half": p.get("half"), "std": p.get("std")} if proj else None,
-        "r": rec, "tgt": tgt, "tch": tch,
+        "p": p.get("st") if proj else None,
+        "r": r, "tgt": tgt, "tch": tch,
     }
 
 
@@ -177,9 +188,10 @@ def build_picks(league, teams, season, traded):
     return picks
 
 
-def build_league(lg, user_id, week, players_db):
+def build_league(lg, user_id, week, players_db, detail):
     lid = lg["league_id"]
-    detail = http_get(f"{API}/league/{lid}")
+    if detail is None:
+        raise RuntimeError(f"{lg.get('name')}: league detail unavailable")
     rosters = http_get(f"{API}/league/{lid}/rosters") or []
     users = http_get(f"{API}/league/{lid}/users") or []
     try:
@@ -236,7 +248,7 @@ def build_league(lg, user_id, week, players_db):
 
     return {
         "id": str(lid), "platform": "sleeper", "name": detail.get("name") or lg.get("name"),
-        "format": fmt, "scoring": scoring,
+        "format": fmt, "scoring": scoring, "scoring_settings": sc,
         "slots": detail.get("roster_positions") or [],
         "ir_slots": int(st.get("reserve_slots") or 0),
         "taxi_slots": int(st.get("taxi_slots") or 0),
@@ -264,14 +276,26 @@ def main():
 
     players_db = http_get(f"{API}/players/nfl", timeout=180)
 
+    details = {}
+    for lg in leagues_raw:
+        try:
+            details[lg["league_id"]] = http_get(f"{API}/league/{lg['league_id']}")
+        except RuntimeError as e:
+            NOTES.append(f"{lg.get('name')}: league detail unavailable ({e})")
+
+    # Only keep stat fields at least one of the user's leagues actually scores.
+    stat_keys = set()
+    for d in details.values():
+        stat_keys |= set((d.get("scoring_settings") or {}).keys())
+
     proj = {}
     try:
-        proj = fetch_projections(season, pweek)
+        proj = fetch_projections(season, pweek, stat_keys)
         if not proj:
             NOTES.append("Projections came back empty; lineup advice will use recent form only")
     except RuntimeError as e:
         NOTES.append(f"Projections unavailable ({e}); lineup advice will use recent form only")
-    recent = fetch_recent(season, pweek)
+    recent = fetch_recent(season, pweek, stat_keys)
     if not recent and pweek > 1:
         NOTES.append("Recent-form stats unavailable; form and usage trends are hidden")
 
@@ -285,23 +309,26 @@ def main():
     leagues = []
     for lg in leagues_raw:
         try:
-            leagues.append(build_league(lg, uid, week, players_db))
+            leagues.append(build_league(lg, uid, week, players_db, details.get(lg["league_id"])))
         except RuntimeError as e:
             NOTES.append(str(e))
-
-    # Free-agent pool per league: unrostered players ranked by projection or recent form.
-    def form(pid):
-        v = (recent.get(pid) or [])
-        vals = [w["ppr"] for w in v[-3:] if w.get("ppr") is not None]
-        return sum(vals) / len(vals) if vals else 0.0
-
-    def strength(pid):
-        pr = (proj.get(pid) or {}).get("ppr") or 0.0
-        return max(pr, form(pid))
 
     quotas = {"RB": 30, "WR": 30, "TE": 14, "QB": 10, "K": 6, "DEF": 8}
     needed = set()
     for lg in leagues:
+        # Free-agent pool: unrostered players ranked by this league's own scoring
+        # (projection, or recent form when there's no projection for them).
+        ss = lg["scoring_settings"]
+
+        def form(pid, ss=ss):
+            v = (recent.get(pid) or [])[-3:]
+            vals = [score_from_stats(w["st"], ss) for w in v]
+            return sum(vals) / len(vals) if vals else 0.0
+
+        def strength(pid, ss=ss):
+            pr = score_from_stats((proj.get(pid) or {}).get("st"), ss)
+            return max(pr, form(pid, ss))
+
         rostered = {p for t in lg["teams"] for p in t["players"] + t["reserve"] + t["taxi"]}
         pool, counts = [], {k: 0 for k in quotas}
         cands = sorted(set(proj) | set(recent) | set(trending), key=lambda x: -strength(x))

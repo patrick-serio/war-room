@@ -6,7 +6,9 @@ let passed = 0;
 const t = (name, fn) => { try { fn(); passed++; console.log('ok  ', name); } catch (e) { console.error('FAIL', name, '\n    ', e.message); process.exitCode = 1; } };
 
 // ---- hand-built scenario with known answers ----
-const mk = (n, pos, ppr, extra = {}) => ({ n, pos, tm: 'AAA', age: 25, inj: null, rank: 50, opp: 'BBB', p: ppr == null ? null : { ppr, half: ppr, std: ppr }, r: { ppr: [], half: [], std: [] }, tgt: [], tch: [], ...extra });
+// Scoring settings are a trivial { pt: 1 } so a mock player's raw stat (pt: N)
+// scores exactly N, keeping every hand-picked number below meaningful.
+const mk = (n, pos, ppr, extra = {}) => ({ n, pos, tm: 'AAA', age: 25, inj: null, rank: 50, opp: 'BBB', p: ppr == null ? null : { pt: ppr }, r: [], tgt: [], tch: [], ...extra });
 const players = {
   q1: mk('Quinn QB', 'QB', 20), q2: mk('Backup QB', 'QB', 12),
   r1: mk('Ray RB1', 'RB', 18), r2: mk('Ray RB2', 'RB', 14), r3: mk('Ray RB3', 'RB', 9), r4: mk('Bench RB', 'RB', 15.5),
@@ -17,7 +19,7 @@ const players = {
   o1: mk('Opp RB', 'RB', 22), o2: mk('Opp WR', 'WR', 10), o3: mk('Opp QB', 'QB', 19),
 };
 const lg = {
-  id: 'x', name: 'Test', format: 'redraft', scoring: 'ppr',
+  id: 'x', name: 'Test', format: 'redraft', scoring: 'ppr', scoring_settings: { pt: 1 },
   slots: ['QB', 'RB', 'RB', 'WR', 'WR', 'TE', 'FLEX', 'K', 'DEF', 'BN', 'BN', 'BN', 'BN'],
   ir_slots: 1, taxi_slots: 0, me: 1, opp: 2, free_agents: ['fa1', 'fa2', 'fa3'],
   teams: [
@@ -112,8 +114,8 @@ t('dynasty value: youth beats age at the same rank, picks are valued', () => {
 
 t('close calls surface a reason and can flip on usage trend', () => {
   const p2 = { ...players,
-    a: mk('Starter WR', 'WR', 12, { tgt: [9, 9, 5, 4], r: { ppr: [8, 8, 8], half: [8, 8, 8], std: [8, 8, 8] } }),
-    b: mk('Bench WR', 'WR', 11.6, { tgt: [4, 5, 9, 10], r: { ppr: [12, 12, 12], half: [12, 12, 12], std: [12, 12, 12] } }) };
+    a: mk('Starter WR', 'WR', 12, { tgt: [9, 9, 5, 4], r: [{ pt: 8 }, { pt: 8 }, { pt: 8 }] }),
+    b: mk('Bench WR', 'WR', 11.6, { tgt: [4, 5, 9, 10], r: [{ pt: 12 }, { pt: 12 }, { pt: 12 }] }) };
   const lg5 = { ...lg, teams: [{ roster_id: 1, name: 'Me', players: ['a', 'b', 'w1'], starters: ['0', '0', '0', 'a', 'w1', '0', '0', '0', '0'], reserve: [], taxi: [] }, lg.teams[1]] };
   const c = FF.makeCtx({ ...D, players: p2 }, lg5);
   const a = FF.lineupAdvice(c);

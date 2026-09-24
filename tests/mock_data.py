@@ -18,6 +18,19 @@ LAST = ["Bellamy", "Okafor", "Whitlock", "Pruitt", "Delacroix", "Hargrove", "Van
 COUNTS = {"QB": 42, "RB": 100, "WR": 130, "TE": 50, "K": 32}
 BYE_TEAMS = {"CHI", "MIA"}
 SEASON, WEEK = "2026", 3
+# A realistic scoring_settings shape (matches Sleeper's own key names), so the
+# fetcher's raw-stats x scoring_settings dot product has real categories to sum,
+# same as a real league (each mock league adds its own "rec" rate on top).
+SCORING_BASE = {
+    "pass_yd": 0.04, "pass_td": 4.0, "pass_int": -2.0,
+    "rush_yd": 0.1, "rush_td": 6.0,
+    "rec_yd": 0.1, "rec_td": 6.0,
+    "fum_lost": -2.0,
+    "fgm_30_39": 3.0, "xpm": 1.0, "fgmiss": -1.0,
+    "def_td": 6.0, "sack": 1.0,
+    "pts_allow_0": 6.0, "pts_allow_1_6": 5.0, "pts_allow_7_13": 4.0,
+    "pts_allow_14_20": 2.0, "pts_allow_21_27": 0.0,
+}
 
 
 def build(seed=11):
@@ -65,6 +78,31 @@ def build(seed=11):
     for r, pid in enumerate(order, 1):
         players[pid]["search_rank"] = r if players[pid]["position"] not in ("K", "DEF") else 900 + r
 
+    # Raw per-stat lines (not canned point totals), mirroring what Sleeper's real
+    # projections/stats endpoints return -- so the fetcher's real dot-product
+    # scoring (raw stats x a league's own scoring_settings) has something to chew
+    # on, the same as the actual Sleeper API.
+    def raw_for(pos, pts, rr):
+        # Scaled random ranges (not a solved equation -- avoids blowing up for
+        # small/large pts) so a better player's raw stats trend higher too.
+        scale = max(0.3, pts / 20.0)
+        if pos == "QB":
+            return {"pass_yd": round(rr.uniform(180, 320) * scale), "pass_td": rr.choice([0, 1, 1, 2, 2, 3]),
+                    "pass_int": rr.choice([0, 0, 0, 1]), "rush_yd": round(rr.uniform(0, 30) * scale)}
+        if pos == "RB":
+            rec = rr.randint(0, 6)
+            return {"rush_yd": round(rr.uniform(30, 110) * scale), "rush_td": rr.choice([0, 0, 1, 1, 2]),
+                    "rec": rec, "rec_yd": rec * rr.randint(5, 11)}
+        if pos in ("WR", "TE"):
+            return {"rec": rr.randint(2, 9), "rec_yd": round(rr.uniform(20, 110) * scale),
+                    "rec_td": rr.choice([0, 0, 0, 1, 1])}
+        if pos == "K":
+            return {"fgm_30_39": rr.choice([0, 1, 1, 2, 2, 3]), "xpm": rr.randint(0, 4)}
+        if pos == "DEF":
+            bucket = rr.choice(["pts_allow_0", "pts_allow_1_6", "pts_allow_7_13", "pts_allow_14_20", "pts_allow_21_27"])
+            return {bucket: 1, "sack": rr.randint(0, 4), "def_td": 1 if rr.random() < 0.12 else 0}
+        return {}
+
     # weekly history
     stats = {}
     for wk in range(1, WEEK):
@@ -74,13 +112,11 @@ def build(seed=11):
                 continue
             pts = max(0, b * rnd.uniform(0.5, 1.5))
             pos = players[pid]["position"]
-            rec = round(pts / 3.2) if pos in ("WR", "TE") else (round(pts / 6) if pos == "RB" else 0)
-            tgt = round(rec * 1.5) if pos in ("WR", "TE", "RB") else 0
+            st = raw_for(pos, pts, rnd)
+            tgt = round((st.get("rec", 0)) * 1.5) if pos in ("WR", "TE", "RB") else 0
             rush = round(pts / 1.1) if pos == "RB" else 0
-            ppr = round(pts, 1)
-            rows.append({"player_id": pid, "week": wk, "stats": {
-                "pts_ppr": ppr, "pts_half_ppr": round(ppr - rec * 0.5, 1), "pts_std": round(ppr - rec, 1),
-                "rec": rec, "rec_tgt": tgt, "rush_att": rush, "gp": 1}})
+            st.update({"rec_tgt": tgt, "rush_att": rush, "gp": 1})
+            rows.append({"player_id": pid, "week": wk, "stats": st})
         stats[wk] = rows
 
     projections = []
@@ -90,10 +126,9 @@ def build(seed=11):
             continue
         pos = players[pid]["position"]
         p = max(0.5, b * rnd.uniform(0.9, 1.1))
-        rec = round(p / 3.5) if pos in ("WR", "TE") else 0
+        st = raw_for(pos, p, rnd)
         projections.append({"player_id": pid, "week": WEEK, "team": tm, "opponent": rnd.choice([t for t in NFL if t != tm]),
-                            "stats": {"pts_ppr": round(p, 1), "pts_half_ppr": round(p - rec * 0.5, 1),
-                                      "pts_std": round(p - rec, 1)}})
+                            "stats": st})
 
     # a few injuries
     ids_by_rank = [p for p in order if players[p]["position"] in ("QB", "RB", "WR", "TE")]
@@ -174,7 +209,9 @@ def build(seed=11):
             matchups.append({"roster_id": i + 1, "matchup_id": i // 2 + 1, "points": 0.0})
             matchups.append({"roster_id": i + 2, "matchup_id": i // 2 + 1, "points": 0.0})
         detail = {"league_id": lid, "name": name, "season": SEASON, "roster_positions": slots,
-                  "scoring_settings": {"rec": 1.0 if dyn_lg else 0.5, "pass_td": 4},
+                  "scoring_settings": {
+                      **SCORING_BASE, "rec": 1.0 if dyn_lg else 0.5,
+                  },
                   "settings": {"type": 2 if dyn_lg else 0, "reserve_slots": ir, "taxi_slots": taxi, "draft_rounds": 4}}
         traded = [{"season": str(int(SEASON) + 1), "round": 1, "roster_id": 5, "owner_id": me_i + 1, "previous_owner_id": 5},
                   {"season": str(int(SEASON) + 1), "round": 2, "roster_id": me_i + 1, "owner_id": 8, "previous_owner_id": me_i + 1}] if dyn_lg else []
