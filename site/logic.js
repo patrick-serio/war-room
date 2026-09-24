@@ -406,11 +406,22 @@
       const P = ctx.players[p];
       if (!P || !TRADE_POS.includes(P.pos)) return;
       const v = valueOf(ctx, p);
-      if (v >= 4) assets.push({ type: 'player', pid: p, pos: P.pos, v });
+      // Shopping specific players (mustGive): include them regardless of value --
+      // the user picked them deliberately, so don't drop a low-value bench guy.
+      if (v >= 4 || (o.mustGive && o.mustGive.includes(p))) assets.push({ type: 'player', pid: p, pos: P.pos, v });
     });
     (me.picks || []).filter((pk) => pk.from !== undefined).forEach((pk) => assets.push({ type: 'pick', pk, v: pickValue(pk, season) }));
     assets.sort((a, b) => b.v - a.v);
     const pool = assets.slice(0, 16);
+    if (o.mustGive) {
+      // Guarantee a low-value mustGive asset survives the top-16 trim.
+      for (const pid of o.mustGive) {
+        if (!pool.some((a) => a.type === 'player' && a.pid === pid)) {
+          const a = assets.find((x) => x.type === 'player' && x.pid === pid);
+          if (a) pool.push(a);
+        }
+      }
+    }
 
     const results = [];
     for (const opp of lg.teams) {
@@ -434,6 +445,8 @@
           const ratio = sum / G.v;
           if (ratio < 0.85 || ratio > 1.35) return;
           const givePlayers = give.filter((x) => x.type === 'player').map((x) => x.pid);
+          // Shopping specific players: only keep packages that actually include one.
+          if (o.mustGive && !o.mustGive.some((pid) => givePlayers.includes(pid))) return;
           const meAfter = activeOf(me).filter((p) => !givePlayers.includes(p)).concat(G.pid);
           const themAfter = oppActive.filter((p) => p !== G.pid).concat(givePlayers);
           const dMe = optimalLineup(ctx, meAfter).total - baseMe;
@@ -451,10 +464,11 @@
     results.sort((a, b) => b.score - a.score);
     const perTeam = {};
     const perGet = {};
-    // Targeting specific players: show a few different package ideas per guy
-    // instead of the one-offer-per-player cap used for open-ended scans.
-    const getCap = o.playerIds ? 3 : 1;
-    const teamCap = o.playerIds ? 4 : 2;
+    // Targeting or shopping specific players: show a few different package
+    // ideas instead of the one-offer-per-player cap used for open-ended scans.
+    const anchored = o.playerIds || o.mustGive;
+    const getCap = anchored ? 3 : 1;
+    const teamCap = anchored ? 4 : 2;
     const picked = [];
     for (const r of results) {
       const kt = r.opp.roster_id;

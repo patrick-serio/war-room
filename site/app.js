@@ -29,7 +29,7 @@
     leagueId: store.get('league', null),
     tab: TABS.some((t) => t.id === hashTab) ? hashTab : store.get('tab', 'roster'),
     wpos: store.get('wpos', ['RB', 'WR', 'TE']),
-    tmode: 'scan', tpos: 'WR', tmax: 2, tsearch: '', tsel: [],
+    tmode: 'scan', tpos: 'WR', tmax: 2, tsearch: '', tsel: [], gsearch: '', gsel: [],
     glossary: false, matchupOpen: false,
   };
   const ctxs = new Map();
@@ -197,14 +197,15 @@
   }
 
   const TRADE_POS = ['QB', 'RB', 'WR', 'TE'];
-  function tradeSearch(ctx, q) {
+  function tradeSearch(ctx, q, own) {
     const qq = q.trim().toLowerCase();
     if (qq.length < 2) return [];
+    const sel = own ? state.gsel : state.tsel;
     const out = [];
     for (const t of ctx.lg.teams) {
-      if (t.roster_id === ctx.lg.me) continue;
+      if (own ? t.roster_id !== ctx.lg.me : t.roster_id === ctx.lg.me) continue;
       for (const pid of t.players) {
-        if (state.tsel.includes(pid)) continue;
+        if (sel.includes(pid)) continue;
         const P = ctx.players[pid];
         if (!P || !TRADE_POS.includes(P.pos) || !P.n.toLowerCase().includes(qq)) continue;
         out.push({ pid, team: t });
@@ -215,15 +216,15 @@
   }
 
   function viewTrades(ctx) {
-    let out = `<div class="seg" role="group" aria-label="Trade mode">${[['scan', 'Scan the league'], ['target', 'Target a position'], ['players', 'Target players']].map(([m, label]) => `<button data-act="tmode" data-m="${m}" aria-pressed="${state.tmode === m}">${label}</button>`).join('')}</div>`;
+    let out = `<div class="seg" role="group" aria-label="Trade mode">${[['scan', 'Scan the league'], ['target', 'Target a position'], ['players', 'Target players'], ['give', 'Shop a player']].map(([m, label]) => `<button data-act="tmode" data-m="${m}" aria-pressed="${state.tmode === m}">${label}</button>`).join('')}</div>`;
     const rep = once('rep:' + ctx.lg.id, () => FF.positionReport(ctx));
     if (state.tmode === 'scan') {
       out += `<section>${sectionH('Your roster')}<div class="rep">${rep.map((r) => `<div class="card"><span class="pos pos-${r.pos}" style="align-self:flex-start">${r.pos}</span><span class="st ${r.status}">${r.status === 'need' ? 'Need help' : r.status === 'surplus' ? 'Surplus' : 'Balanced'}</span><span class="sub">${r.status === 'surplus' ? esc(r.surplus.map((p) => nm(ctx, p)).join(', ')) : `Weakest starter ${f1(r.weakest)} vs league median ${f1(r.median)}`}</span></div>`).join('')}</div></section>`;
     } else if (state.tmode === 'target') {
       out += `<section><div class="ctl"><span class="label">Who do you want?</span><div class="chips">${TRADE_POS.map((p) => `<button class="tog" data-act="tpos" data-pos="${p}" aria-pressed="${state.tpos === p}">${p}</button>`).join('')}</div></div>
         <div class="ctl"><span class="label">Most players you'll give</span><div class="chips">${[1, 2, 3].map((n) => `<button class="tog" data-act="tmax" data-n="${n}" aria-pressed="${state.tmax === n}">${n}</button>`).join('')}</div></div></section>`;
-    } else {
-      const results = tradeSearch(ctx, state.tsearch);
+    } else if (state.tmode === 'players') {
+      const results = tradeSearch(ctx, state.tsearch, false);
       out += `<section><div class="ctl"><span class="label">Search players on other rosters</span>
           <input class="search" type="search" inputmode="search" autocomplete="off" data-act="tsearch" placeholder="Player name" value="${esc(state.tsearch)}">
           ${results.length ? `<div class="search-results">${results.map((r) => `<button data-act="tpick" data-id="${r.pid}"><span class="pname"><span class="pos pos-${ctx.players[r.pid].pos}">${ctx.players[r.pid].pos}</span> ${esc(nm(ctx, r.pid))}</span><span class="sub">${esc(r.team.name)}</span></button>`).join('')}</div>` : ''}
@@ -231,15 +232,29 @@
         ${state.tsel.length ? `<div class="ctl"><span class="label">Targeting</span><div class="chips">${state.tsel.map((pid) => `<button class="tog" data-act="tunpick" data-id="${pid}" aria-pressed="true">${esc(nm(ctx, pid))} ×</button>`).join('')}</div></div>` : ''}
         <div class="ctl"><span class="label">Most players you'll give</span><div class="chips">${[1, 2, 3].map((n) => `<button class="tog" data-act="tmax" data-n="${n}" aria-pressed="${state.tmax === n}">${n}</button>`).join('')}</div></div></section>`;
       if (!state.tsel.length) return out + '<div class="card empty"><h3>Search for a player</h3><p class="hint">Find anyone on another roster and tap them to see trade packages built around getting that specific player.</p></div>';
+    } else {
+      const results = tradeSearch(ctx, state.gsearch, true);
+      out += `<section><div class="ctl"><span class="label">Search your own roster</span>
+          <input class="search" type="search" inputmode="search" autocomplete="off" data-act="gsearch" placeholder="Player name" value="${esc(state.gsearch)}">
+          ${results.length ? `<div class="search-results">${results.map((r) => `<button data-act="gpick" data-id="${r.pid}"><span class="pname"><span class="pos pos-${ctx.players[r.pid].pos}">${ctx.players[r.pid].pos}</span> ${esc(nm(ctx, r.pid))}</span></button>`).join('')}</div>` : ''}
+        </div>
+        ${state.gsel.length ? `<div class="ctl"><span class="label">Shopping</span><div class="chips">${state.gsel.map((pid) => `<button class="tog" data-act="gunpick" data-id="${pid}" aria-pressed="true">${esc(nm(ctx, pid))} ×</button>`).join('')}</div></div>` : ''}
+        <div class="ctl"><span class="label">Most players you'll give</span><div class="chips">${[1, 2, 3].map((n) => `<button class="tog" data-act="tmax" data-n="${n}" aria-pressed="${state.tmax === n}">${n}</button>`).join('')}</div></div></section>`;
+      if (!state.gsel.length) return out + '<div class="card empty"><h3>Search for a player</h3><p class="hint">Find someone on your own roster you want to move and tap them to see fair packages other teams might send back for him.</p></div>';
     }
     const opts = state.tmode === 'scan' ? { maxGive: 3, limit: 8 }
       : state.tmode === 'target' ? { maxGive: state.tmax, pos: state.tpos, limit: 8 }
-      : { maxGive: state.tmax, playerIds: state.tsel, limit: 12 };
-    const cacheKey = state.tmode === 'players' ? state.tsel.join(',') + state.tmax : state.tmode + state.tpos + state.tmax;
+      : state.tmode === 'players' ? { maxGive: state.tmax, playerIds: state.tsel, limit: 12 }
+      : { maxGive: state.tmax, mustGive: state.gsel, limit: 12 };
+    const cacheKey = state.tmode === 'players' ? 'players:' + state.tsel.join(',') + state.tmax
+      : state.tmode === 'give' ? 'give:' + state.gsel.join(',') + state.tmax
+      : state.tmode + state.tpos + state.tmax;
     const offers = once('t:' + ctx.lg.id + ':' + cacheKey, () => FF.tradeOffers(ctx, opts));
     state.offers = offers;
     if (!offers.length) {
-      const why = state.tmode === 'players' ? 'Nobody would send a package back for them that also helps their side. Try allowing more players in the package.' : 'Nothing balanced and useful to both sides came up. Try another position or allow more players in the package.';
+      const why = state.tmode === 'players' ? 'Nobody would send a package back for them that also helps their side. Try allowing more players in the package.'
+        : state.tmode === 'give' ? 'Nobody has a fair, mutually-useful trade for him right now. Try allowing more players in the package, or check back after a refresh.'
+        : 'Nothing balanced and useful to both sides came up. Try another position or allow more players in the package.';
       return out + `<div class="card empty"><h3>No fair offers found</h3><p class="hint">${why}</p></div>`;
     }
     out += `<section>${sectionH('Offers worth sending', offers.length)}${offers.map((o, i) => `
@@ -341,10 +356,11 @@
   function render() {
     // Full-page re-render on every state change would normally steal focus and
     // reset the cursor out of a text input mid-keystroke -- preserve it for the
-    // one input this app has (trade player search).
+    // search inputs this app has (trade player search, both directions).
     const active = document.activeElement;
-    const restore = active && active.dataset && active.dataset.act === 'tsearch'
-      ? { start: active.selectionStart, end: active.selectionEnd } : null;
+    const activeAct = active && active.dataset && active.dataset.act;
+    const restore = (activeAct === 'tsearch' || activeAct === 'gsearch')
+      ? { act: activeAct, start: active.selectionStart, end: active.selectionEnd } : null;
     const D = cur();
     const lg = currentLeague();
     let body;
@@ -365,7 +381,7 @@
     }
     app.innerHTML = `${header(D, lg)}<main class="wrap">${body}</main>${nav(alertCount)}${state.sheet ? sheet() : ''}${state.glossary ? glossary() : ''}${state.matchupOpen ? matchupSheet(ctx) : ''}`;
     if (restore) {
-      const el = app.querySelector('[data-act="tsearch"]');
+      const el = app.querySelector(`[data-act="${restore.act}"]`);
       if (el) { el.focus(); el.setSelectionRange(restore.start, restore.end); }
     }
   }
@@ -408,6 +424,11 @@
       if (!state.tsel.includes(id)) state.tsel = [...state.tsel, id];
       state.tsearch = ''; render();
     } else if (act === 'tunpick') { state.tsel = state.tsel.filter((x) => x !== el.dataset.id); render(); }
+    else if (act === 'gpick') {
+      const id = el.dataset.id;
+      if (!state.gsel.includes(id)) state.gsel = [...state.gsel, id];
+      state.gsearch = ''; render();
+    } else if (act === 'gunpick') { state.gsel = state.gsel.filter((x) => x !== el.dataset.id); render(); }
     else if (act === 'copy') {
       const o = (state.offers || [])[Number(el.dataset.i)];
       if (!o) return;
@@ -426,9 +447,10 @@
   });
 
   app.addEventListener('input', (e) => {
-    const el = e.target.closest('[data-act="tsearch"]');
+    const el = e.target.closest('[data-act="tsearch"], [data-act="gsearch"]');
     if (!el) return;
-    state.tsearch = el.value; render();
+    if (el.dataset.act === 'tsearch') state.tsearch = el.value; else state.gsearch = el.value;
+    render();
   });
 
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.sheet || state.glossary || state.matchupOpen)) { state.sheet = false; state.glossary = false; state.matchupOpen = false; render(); } });
