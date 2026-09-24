@@ -296,8 +296,14 @@
           // Keeper league (ESPN): no age/dynasty-rank data, but the round
           // he'd cost to keep is a good long-term signal -- discount
           // proportionally to his real production, same shape as the
-          // age-based branch below.
-          v = 0.6 * vor * keeperMult(P.kprd);
+          // age-based branch below. Long-term keeper value shouldn't swing
+          // on one noisy week (a tough matchup, a game-flow dud, a bye
+          // dragging this week's projection to 0), so use the stronger of
+          // this week's projection and his recent trailing average.
+          const recent = form(ctx, P);
+          const prod = recent != null ? Math.max(effOf(ctx, pid), recent) : effOf(ctx, pid);
+          const vorK = Math.max(0, prod - replacement(ctx)[P.pos]) * 5;
+          v = 0.6 * vorK * keeperMult(P.kprd);
         } else if (ctx.dyn && P.rank != null) {
           const base = 100 * Math.exp(-P.rank / 90);
           v = 0.85 * base * ageMult(P.pos, P.age) + 0.15 * vor;
