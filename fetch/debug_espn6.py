@@ -15,9 +15,10 @@ def main():
     for lid in LEAGUE_IDS:
         base = espn.league_base(session, lid, 2026)
         d = espn.http_get(session, f"{base}/{lid}", params={"view": "mSettings"})
-        fs = d.get("settings", {}).get("financeSettings", {})
+        ds = d.get("settings", {}).get("draftSettings", {})
         name = d.get("settings", {}).get("name")
-        print(f"{lid} ({name}): keeperCount={fs.get('keeperCount')} keeperCountFuture={fs.get('keeperCountFuture')}")
+        print(f"{lid} ({name}): draftSettings keys={list(ds.keys())}")
+        print(f"  keeperCount={ds.get('keeperCount')} keeperCountFuture={ds.get('keeperCountFuture')} keeperOrderType={ds.get('keeperOrderType')}")
 
 
 if __name__ == "__main__":
