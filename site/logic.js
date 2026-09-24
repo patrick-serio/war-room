@@ -440,7 +440,14 @@
       const v = valueOf(ctx, p);
       // Shopping specific players (mustGive): include them regardless of value --
       // the user picked them deliberately, so don't drop a low-value bench guy.
-      if (v >= 4 || (o.mustGive && o.mustGive.includes(p))) assets.push({ type: 'player', pid: p, pos: P.pos, v });
+      // Keeper-league players with a real draft/keeper investment (kprd set)
+      // are worth offering as package depth even when this week's marginal
+      // production over replacement is thin -- a committee back's current
+      // vor can sit near zero while he's still a real, kept asset, and the
+      // combos()/ratio-fairness check below already keeps a low-value piece
+      // from distorting a package on its own.
+      const keeperAsset = ctx.dyn && P.kprd != null;
+      if (v >= 4 || keeperAsset || (o.mustGive && o.mustGive.includes(p))) assets.push({ type: 'player', pid: p, pos: P.pos, v });
     });
     (me.picks || []).filter((pk) => pk.from !== undefined).forEach((pk) => assets.push({ type: 'pick', pk, v: pickValue(pk, season) }));
     assets.sort((a, b) => b.v - a.v);
