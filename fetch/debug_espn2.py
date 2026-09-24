@@ -75,6 +75,30 @@ def main():
 
     print(f"\nfound {found} matching roster players")
 
+    # verify the new opponent-mapping code against real proTeamSchedules shape
+    pro_teams, pro_opp = espn.fetch_pro_teams(session, season)
+    print(f"\n--- pro_teams: {len(pro_teams)} teams, pro_opp: {len(pro_opp)} teams ---")
+    bills = pro_opp.get(2, {})
+    print(f"Bills (id=2) opp_by_week sample: {dict(list(bills.items())[:6])}")
+    texans = pro_opp.get(34, {})
+    print(f"Texans (id=34) opp_by_week sample: {dict(list(texans.items())[:6])}")
+    # reciprocity sanity check: if A's week-N opponent is B, B's week-N opponent should be A
+    mismatches = 0
+    checked = 0
+    for tid, weekly in pro_opp.items():
+        for wk, opp_abbrev in weekly.items():
+            opp_id = next((oid for oid, ab in pro_teams.items() if ab == opp_abbrev), None)
+            if opp_id is None:
+                continue
+            checked += 1
+            back = pro_opp.get(opp_id, {}).get(wk)
+            if back != pro_teams.get(tid):
+                mismatches += 1
+                print(f"MISMATCH: team {tid} ({pro_teams.get(tid)}) week {wk} -> {opp_abbrev}, "
+                      f"but {opp_abbrev} week {wk} -> {back} (expected {pro_teams.get(tid)})")
+    print(f"reciprocity check: {checked} pairs checked, {mismatches} mismatches")
+    print(f"Josh Allen's team (proTeamId=2) week {week} opponent: {pro_opp.get(2, {}).get(week)}")
+
 
 if __name__ == "__main__":
     main()
