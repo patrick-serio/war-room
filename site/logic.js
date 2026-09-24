@@ -275,7 +275,14 @@
       if (P.pos === 'K' || P.pos === 'DEF') v = 1;
       else {
         const vor = Math.max(0, effOf(ctx, pid) - replacement(ctx)[P.pos]) * 5;
-        if (ctx.dyn && P.rank != null) {
+        if (ctx.dyn && P.kprd != null) {
+          // Keeper league (ESPN): no age/dynasty-rank data, but we know the
+          // draft round he'd cost to keep -- same PICK_VALUE scale used for
+          // real dynasty picks. A player who clearly outproduces that cost
+          // is valuable to hold/acquire; one who barely clears it isn't
+          // worth the pick you'd forfeit to keep him.
+          v = Math.max(0, vor - (PICK_VALUE[P.kprd] || 3));
+        } else if (ctx.dyn && P.rank != null) {
           const base = 100 * Math.exp(-P.rank / 90);
           v = 0.85 * base * ageMult(P.pos, P.age) + 0.15 * vor;
         } else if (ctx.dyn) v = 0.6 * vor * ageMult(P.pos, P.age);

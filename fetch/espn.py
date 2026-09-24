@@ -13,8 +13,15 @@ data before writing this:
     score is stored as a trivial {"pt": N} raw-stat dict with a matching
     {"pt": 1} scoring_settings, reusing logic.js's existing scoreOf() dot
     product unchanged.
-  - These leagues are treated as redraft only (no dynasty/keeper draft
-    picks, no taxi squad) -- can be extended later if wanted.
+  - No taxi squad or tradeable future picks (ESPN keeper leagues don't
+    trade picks the way Sleeper dynasty leagues do). A league with
+    draftSettings.keeperCount > 0 is tagged format "keeper" instead of
+    "redraft", and each rostered player carries "kprd" (the round he
+    currently occupies in this season's draft, from draftDetail.picks) --
+    the round you'd forfeit next year to keep him again. logic.js's
+    dynasty-style valueOf() uses that as the long-term signal for these
+    leagues in place of Sleeper's age/dynasty-rank fields, which ESPN
+    doesn't expose.
 """
 import json
 import os
@@ -106,7 +113,7 @@ def fetch_pro_teams(session, season):
     return abbrev, opp_by_week
 
 
-def build_player(pid_prefix, pool_entry, week, season, pro_teams, pro_opp):
+def build_player(pid_prefix, pool_entry, week, season, pro_teams, pro_opp, draft_rounds=None):
     p = pool_entry.get("player") or pool_entry
     if not p or "id" not in p:
         return None
@@ -128,6 +135,7 @@ def build_player(pid_prefix, pool_entry, week, season, pro_teams, pro_opp):
         "inj": inj, "rank": None, "opp": (pro_opp.get(team_id) or {}).get(week),
         "p": {"pt": proj} if proj is not None else None,
         "r": recent, "tgt": [], "tch": [],
+        "kprd": (draft_rounds or {}).get(p["id"]),
     }
 
 
@@ -162,8 +170,18 @@ def build_league(session, league_id, season, week, notes, pro_teams, pro_opp):
         notes.append(f"ESPN league {league_id}: could not reach the API")
         return None, {}
     d = http_get(session, f"{base}/{league_id}",
-                 params={"view": ["mSettings", "mTeam", "mRoster", "mMatchupScore", "mStatus"]})
+                 params={"view": ["mSettings", "mTeam", "mRoster", "mMatchupScore", "mStatus", "mDraftDetail"]})
     league_name = d.get("settings", {}).get("name") or f"ESPN {league_id}"
+
+    # Keeper cost: the round a rostered player currently occupies in this
+    # season's draft is the round you'd forfeit next year to keep him again
+    # (confirmed against the league's own draftSettings.keeperCount and
+    # draftDetail.picks, which lists every pick's roundId including picks
+    # auto-filled by a returning keeper). Undrafted players (picked up off
+    # waivers this season) get no entry, treated as no known keeper cost.
+    keeper_count = d.get("settings", {}).get("draftSettings", {}).get("keeperCount") or 0
+    draft_rounds = {pk["playerId"]: pk["roundId"] for pk in d.get("draftDetail", {}).get("picks", [])
+                    if pk.get("playerId") and pk.get("roundId")}
     swid = session.cookies.get("SWID", "").strip("{}").lower()
     teams_raw = d.get("teams", [])
     mine = next((t for t in teams_raw if swid in
@@ -196,7 +214,7 @@ def build_league(session, league_id, season, week, notes, pro_teams, pro_opp):
         by_slot = {}
         active_ids, reserve_ids = [], []
         for e in entries:
-            res = build_player(f"espn:{league_id}:", e.get("playerPoolEntry", {}), week, season, pro_teams, pro_opp)
+            res = build_player(f"espn:{league_id}:", e.get("playerPoolEntry", {}), week, season, pro_teams, pro_opp, draft_rounds)
             if not res:
                 continue
             pid, pdata = res
@@ -248,7 +266,8 @@ def build_league(session, league_id, season, week, notes, pro_teams, pro_opp):
 
     league = {
         "id": f"espn:{league_id}", "platform": "espn", "name": league_name,
-        "format": "redraft", "scoring": scoring, "scoring_settings": {"pt": 1},
+        "format": "keeper" if keeper_count > 0 else "redraft", "keepers": keeper_count,
+        "scoring": scoring, "scoring_settings": {"pt": 1},
         "slots": slots,
         "ir_slots": int(slot_counts.get("21", 0)),
         "taxi_slots": 0,

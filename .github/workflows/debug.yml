@@ -16,4 +16,4 @@ jobs:
         env:
           ESPN_SWID: ${{ secrets.ESPN_SWID }}
           ESPN_S2: ${{ secrets.ESPN_S2 }}
-        run: python fetch/debug_espn6.py
+        run: python fetch/debug_espn7.py
