@@ -1,80 +1,46 @@
 #!/usr/bin/env python3
-"""Temporary diagnostic #2: targeted probe for ESPN player stats/projection
-shape and matchup scoring, after probe #1 got truncated before reaching them.
-Not for permanent use -- delete after use."""
+"""Temporary diagnostic #3: smoke-test the real fetch/espn.py module against
+the user's real leagues and sanity-check the produced schema. Not for
+permanent use -- delete after use."""
 import json
-import os
+import sys
 
-import requests
+sys.path.insert(0, "fetch")
+import espn  # noqa: E402
 
-SWID = os.environ["ESPN_SWID"]
-ESPN_S2 = os.environ["ESPN_S2"]
 LEAGUE_IDS = ["610033022", "43688494"]
-SEASON = os.environ.get("SEASON", "2026")
+SEASON = 2026
+WEEK = 3
 
-s = requests.Session()
-s.cookies.set("SWID", SWID, domain=".espn.com")
-s.cookies.set("espn_s2", ESPN_S2, domain=".espn.com")
-s.headers["User-Agent"] = "fantasy-hq-debug/1.0"
+notes = []
+leagues, players = espn.fetch(LEAGUE_IDS, SEASON, WEEK, notes)
 
-BASE = f"https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{SEASON}/segments/0/leagues"
+print(f"leagues: {len(leagues)}, players: {len(players)}, notes: {notes}")
 
+for lg in leagues:
+    print(f"\n=== {lg['name']} ({lg['id']}) ===")
+    print("format/scoring:", lg["format"], lg["scoring"])
+    print("slots:", lg["slots"])
+    print("ir_slots:", lg["ir_slots"], "free_agents:", len(lg["free_agents"]))
+    print("me:", lg["me"], "opp:", lg["opp"])
+    me = next(t for t in lg["teams"] if t["roster_id"] == lg["me"])
+    print("my team:", me["name"], "record", me["w"], me["l"], me["t"])
+    print("my players:", len(me["players"]), "starters:", me["starters"], "reserve:", me["reserve"])
+    for pid in me["starters"]:
+        if pid == "0":
+            print("  <empty>")
+            continue
+        p = players.get(pid)
+        print(f"  {pid} {p['n'] if p else '???'} {p['pos'] if p else ''} proj={p['p'] if p else None} inj={p['inj'] if p else None} recent={p['r'] if p else None}")
+    if lg["free_agents"]:
+        fa = lg["free_agents"][0]
+        print("sample free agent:", fa, players.get(fa))
 
-def get(url, params=None, headers=None):
-    r = s.get(url, params=params, headers=headers, timeout=30)
-    print("GET", r.url, "->", r.status_code)
-    return r
-
-
-for lid in LEAGUE_IDS:
-    print(f"\n===== LEAGUE {lid} =====")
-    r = get(f"{BASE}/{lid}", params={"view": ["mSettings", "mTeam", "mRoster", "mMatchupScore", "mStatus"]})
-    if r.status_code != 200:
-        print("BODY:", r.text[:500])
-        continue
-    d = r.json()
-    print("league scoringPeriodId:", d.get("scoringPeriodId"))
-    print("status.currentMatchupPeriod:", d.get("status", {}).get("currentMatchupPeriod"))
-    print("scoringType:", d.get("settings", {}).get("scoringSettings", {}).get("scoringType"))
-    items = d.get("settings", {}).get("scoringSettings", {}).get("scoringItems", [])
-    print(f"scoringItems count: {len(items)}")
-    rec = [it for it in items if it.get("statId") == 53]
-    print("reception (statId 53) scoring item:", rec)
-    print("FULL scoringItems:", json.dumps(items))
-
-    myswid = SWID.strip("{}").lower()
-    teams = d.get("teams", [])
-    mine = None
-    for t in teams:
-        owners = [str(o).strip("{}").lower() for o in (t.get("owners") or [])]
-        if myswid in owners:
-            mine = t
-            break
-    if not mine:
-        print("Could not find my team")
-        continue
-    print("my team id:", mine.get("id"))
-    roster = (mine.get("roster") or {}).get("entries", [])
-    for e in roster[:3]:
-        p = e.get("playerPoolEntry", {}).get("player", {})
-        print(f"\n-- {p.get('fullName')} pos={p.get('defaultPositionId')} lineupSlotId={e.get('lineupSlotId')} --")
-        stats = p.get("stats", [])
-        print(f"stats entries: {len(stats)}")
-        for st in stats:
-            summary = {k: st.get(k) for k in ("scoringPeriodId", "statSourceId", "statSplitTypeId", "appliedTotal", "seasonId")}
-            print("  ", json.dumps(summary))
-        # show one full projected-current-week entry if present
-        cur_week = d.get("scoringPeriodId")
-        proj = next((st for st in stats if st.get("statSourceId") == 1 and st.get("scoringPeriodId") == cur_week), None)
-        if proj:
-            print("  PROJECTED THIS WEEK FULL:", json.dumps(proj)[:1500])
-        actual = next((st for st in stats if st.get("statSourceId") == 0 and st.get("scoringPeriodId") == cur_week), None)
-        if actual:
-            print("  ACTUAL THIS WEEK FULL:", json.dumps(actual)[:1500])
-
-    sched = d.get("schedule", [])
-    cur_mp = d.get("status", {}).get("currentMatchupPeriod")
-    my_id = mine.get("id")
-    my_matchup = next((m for m in sched if m.get("matchupPeriodId") == cur_mp and
-                        (m.get("home", {}).get("teamId") == my_id or m.get("away", {}).get("teamId") == my_id)), None)
-    print("\nmy current matchup:", json.dumps(my_matchup, indent=2)[:2000] if my_matchup else None)
+# quick sanity: run it through the real site logic to make sure nothing crashes
+payload = {
+    "generated_at": "2026-01-01T00:00:00+00:00", "username": "test", "season": str(SEASON), "week": WEEK,
+    "season_type": "regular", "notes": notes, "trending": [], "players": players, "leagues": leagues,
+}
+with open("/tmp/espn_test.json", "w") as f:
+    json.dump(payload, f)
+print("\nwrote /tmp/espn_test.json")
