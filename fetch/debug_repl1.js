@@ -21,8 +21,6 @@ function fetchJSON(url) {
   const lg = D.leagues.find((l) => l.id === 'espn:610033022');
   const ctx = FF.makeCtx(D, lg);
 
-  // Access internal replacement() indirectly isn't exported, so recompute
-  // the same way: Nth best ACTIVE ROSTERED RB's effOf(), across the league.
   let rosteredRBCount = 0;
   lg.teams.forEach((t) => {
     const active = new Set([...(t.reserve || []), ...(t.taxi || [])]);
@@ -32,6 +30,20 @@ function fetchJSON(url) {
     });
   });
   console.log('total active rostered RBs across league:', rosteredRBCount);
+  console.log('lg.slots:', JSON.stringify(lg.slots));
+  console.log('lg.teams.length:', lg.teams.length);
+  console.log('replacement(ctx):', JSON.stringify(FF.replacement(ctx)));
+  console.log('RB effOf ranking (raw, what replacement() sorts):');
+  const rbEffs = [];
+  lg.teams.forEach((t) => {
+    const active = new Set([...(t.reserve || []), ...(t.taxi || [])]);
+    t.players.filter((p) => !active.has(p)).forEach((p) => {
+      const P = D.players[p];
+      if (P && P.pos === 'RB') rbEffs.push({ n: P.n, eff: FF.effOf(ctx, p) });
+    });
+  });
+  rbEffs.sort((a, b) => b.eff - a.eff);
+  rbEffs.forEach((r, i) => console.log(`  ${i + 1}. ${r.n}: eff=${r.eff.toFixed ? r.eff.toFixed(2) : r.eff}`));
 
   const me = lg.teams.find((t) => t.roster_id === lg.me);
   console.log('\nmy RBs:');
