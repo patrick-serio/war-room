@@ -1,0 +1,12 @@
+name: Debug probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run diagnostic
+        run: node fetch/debug_cod1.js
