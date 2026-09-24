@@ -81,13 +81,17 @@
     o = o || {};
     const P = ctx.players[pid];
     if (!P) return `<div class="prow"><span class="slot"></span><div class="pmain"><div class="pname"><span class="t">Unknown player ${esc(pid)}</span></div></div><div class="pnum"></div></div>`;
+    const proj = FF.projOf(ctx, pid);
     const eff = FF.effOf(ctx, pid);
     const noProj = ctx.hasProj && !P.p && P.pos !== 'DEF';
     const meta = [P.tm || 'FA', P.opp ? 'Opp ' + P.opp : (noProj ? 'Bye or inactive' : ''), P.age ? P.age + 'y' : ''].filter(Boolean).join(' · ');
     const lead = o.slot ? `<span class="slot">${esc(o.slot.replace('SUPER_FLEX', 'SFLX').replace('WRRB_FLEX', 'W/R').replace('REC_FLEX', 'W/T'))}</span>` : `<span class="lead"><span class="pos pos-${P.pos}">${P.pos}</span></span>`;
-    const num = noProj || eff === 0 ? '<b class="dim">–</b>' : `<b>${f1(eff)}</b>`;
+    const num = noProj || proj === 0 ? '<b class="dim">–</b>' : `<b>${f1(proj)}</b>`;
     const showVal = ctx.dyn && o.value !== false && P.pos !== 'K' && P.pos !== 'DEF';
-    const under = showVal ? `<small><span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span></small>` : '<small>proj</small>';
+    // Injury discount is a sub-value, not baked into the main number shown above.
+    const hurt = !showVal && proj > 0 && Math.abs(eff - proj) > 0.05;
+    const under = showVal ? `<small><span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span></small>`
+      : hurt ? `<small>adj ${f1(eff)}</small>` : '<small>proj</small>';
     const posTag = o.slot ? `<span class="pos pos-${P.pos}">${P.pos}</span>` : '';
     return `<div class="prow">${lead}<div class="pmain"><div class="pname">${posTag}<span class="t">${esc(P.n)}</span>${injBadge(P.inj)}</div><div class="pmeta">${esc(o.sub || meta)}</div></div><div class="pnum">${num}${under}</div></div>`;
   }
@@ -151,14 +155,14 @@
           ${c.verdict.reasons.length ? reasonList(ctx, c.verdict.reasons) : '<p class="hint">No usage or form edge either way. Go with the higher projection.</p>'}</div>`).join('')}</section>`;
     }
     out += `<section>${sectionH('Full best lineup', f1(adv.optimal.total))}<div class="card list">${adv.optimal.slots.map((r) => (r.pid ? playerRow(ctx, r.pid, { slot: r.slot }) : emptyRow(r.slot))).join('')}</div>
-      <p class="hint">Points are Sleeper's own weekly projection, discounted for injury status. Bye weeks and Out players count as zero. Recent-form and usage trends are called out separately on toss-ups and swaps above.</p></section>`;
+      <p class="hint">Points are Sleeper's own weekly projection, exactly as Sleeper shows it. An "adj" figure appears under a hurt player's number when his risk-adjusted value differs -- that adjustment (not the projection itself) is what decides whether he's worth starting. Bye weeks count as zero. Recent-form and usage trends are called out separately on toss-ups and swaps above.</p></section>`;
     return out;
   }
 
   function miniPlayer(ctx, pid) {
     const P = ctx.players[pid];
     if (!P) return `<span>${esc(pid)}</span>`;
-    return `<span class="pos pos-${P.pos}">${P.pos}</span><span class="pname"><span class="t">${esc(P.n)}</span>${injBadge(P.inj)}</span><span class="hint" style="margin-left:auto">${f1(FF.effOf(ctx, pid))}</span>`;
+    return `<span class="pos pos-${P.pos}">${P.pos}</span><span class="pname"><span class="t">${esc(P.n)}</span>${injBadge(P.inj)}</span><span class="hint" style="margin-left:auto">${f1(FF.projOf(ctx, pid))}</span>`;
   }
   function reasonList(ctx, items) {
     if (!items || !items.length) return '';
@@ -259,8 +263,9 @@
 
   const GLOSSARY = [
     ['Every screen', [
-      ['Proj', "Sleeper's own projected fantasy points for that player this week, in your league's scoring format. Counted as 0 if he's Out, IR, Suspended or on a bye; cut about 40% if Doubtful and 7% if Questionable."],
-      ['Value', "Redraft leagues: value over replacement, how many points better this player is than a readily available replacement at his position, scaled up so a difference-making starter reads far higher than a bench stash. Dynasty or keeper leagues: blends that same value-over-replacement with the player's overall rank and an age curve, so a young, highly-ranked player scores above a same-production veteran."],
+      ['Proj', "Sleeper's own projected fantasy points for that player this week, in your league's own scoring rules (computed the same way Sleeper does: his projected stat line times your league's per-stat point values) -- not discounted for anything, so it matches what Sleeper's own app shows."],
+      ['adj (under a hurt player)', "The risk-adjusted number: Proj cut to 0 if he's Out, IR, Suspended or on a bye, cut about 60% if Doubtful, about 7% if Questionable. This sub-value (not the Proj shown above it) is what actually decides lineup advice, swap gains, and matchup totals -- so a Questionable starter's real Proj stays visible while the advice still accounts for his risk."],
+      ['Value', "Redraft leagues: value over replacement, how many points better this player is than a readily available replacement at his position, scaled up so a difference-making starter reads far higher than a bench stash. Dynasty or keeper leagues: blends that same value-over-replacement with the player's overall rank and an age curve, so a young, highly-ranked player scores above a same-production veteran. Based on the risk-adjusted (adj) number, not the raw Proj."],
     ]],
     ['Lineup tab', [
       ['Gain (a swap)', "The extra points per week starting the suggested player over the one he replaces is worth -- just the difference between their Proj numbers."],

@@ -52,23 +52,34 @@
   function makeCtx(D, lg) {
     const players = D.players;
     const hasProj = Object.values(players).some((p) => p.p);
-    return { D, lg, players, hasProj, dyn: lg.format !== 'redraft', cache: new Map(), vcache: new Map(), _repl: null };
+    return { D, lg, players, hasProj, dyn: lg.format !== 'redraft', cache: new Map(), pcache: new Map(), vcache: new Map(), _repl: null };
   }
 
-  // The headline number is Sleeper's own projection (discounted for injury status),
-  // not a blend with recent form. Recent-form trends still surface separately as
-  // reasoning on close calls and swaps (see facts()/verdict() below) instead of
-  // silently moving the main number.
-  function effOf(ctx, pid) {
-    if (ctx.cache.has(pid)) return ctx.cache.get(pid);
+  // The headline number is Sleeper's own projection, full stop -- not blended
+  // with recent form, not discounted for injury status. Recent-form trends
+  // surface separately as reasoning on close calls and swaps (see facts()/
+  // verdict() below); the injury discount is exposed as a sub-value by the UI
+  // (see effOf below) instead of silently moving the main number.
+  function projOf(ctx, pid) {
+    if (ctx.pcache.has(pid)) return ctx.pcache.get(pid);
     const P = ctx.players[pid];
     let v = 0;
     if (P) {
       const pj = P.p ? scoreOf(P.p, ctx.lg.scoring_settings) : null;
       const fm = form(ctx, P);
-      const b = pj != null ? pj : (!ctx.hasProj && fm != null ? fm : 0);
-      v = b * injFactor(P.inj);
+      v = pj != null ? pj : (!ctx.hasProj && fm != null ? fm : 0);
     }
+    ctx.pcache.set(pid, v);
+    return v;
+  }
+
+  // Risk-adjusted points: projOf() discounted for injury status. Used to decide
+  // who to start/recommend/value (an Out player should never get picked as
+  // "optimal"), never as the headline number shown for a player.
+  function effOf(ctx, pid) {
+    if (ctx.cache.has(pid)) return ctx.cache.get(pid);
+    const P = ctx.players[pid];
+    const v = P ? projOf(ctx, pid) * injFactor(P.inj) : 0;
     ctx.cache.set(pid, v);
     return v;
   }
@@ -97,7 +108,7 @@
     let total = 0;
     for (const { s, i } of slots) {
       const pid = pool.find((p) => !used.has(p) && ELIG[s].includes(ctx.players[p].pos) && effOf(ctx, p) > 0) || null;
-      if (pid) { used.add(pid); total += effOf(ctx, pid); }
+      if (pid) { used.add(pid); total += projOf(ctx, pid); }
       out.push({ slot: s, idx: i, pid });
     }
     out.sort((a, b) => a.idx - b.idx);
@@ -112,7 +123,7 @@
     slots.forEach((s, i) => {
       if (!ELIG[s]) return;
       const pid = t.starters[i] && t.starters[i] !== '0' ? t.starters[i] : null;
-      if (pid) total += effOf(ctx, pid);
+      if (pid) total += projOf(ctx, pid);
       rows.push({ slot: s, idx: i, pid });
     });
     return { slots: rows, total };
@@ -137,7 +148,7 @@
     }
     insLeft.forEach((inn) => pairs.push([inn, outsLeft.length ? outsLeft.shift() : null]));
     for (const [inn, out] of pairs) {
-      const gain = effOf(ctx, inn) - (out ? effOf(ctx, out) : 0);
+      const gain = projOf(ctx, inn) - (out ? projOf(ctx, out) : 0);
       swaps.push({ in: inn, out, gain: r1(gain), insights: out ? compare(ctx, inn, out) : [] });
     }
     swaps.sort((a, b) => b.gain - a.gain);
@@ -156,7 +167,7 @@
       for (const b of bench) {
         const bp = ctx.players[b];
         if (!bp || bp.pos !== sp.pos) continue;
-        const d = effOf(ctx, s) - effOf(ctx, b);
+        const d = projOf(ctx, s) - projOf(ctx, b);
         if (Math.abs(d) > 1.5 || effOf(ctx, b) <= 0 || effOf(ctx, s) <= 0) continue;
         const key = [s, b].sort().join('|');
         if (seen.has(key)) continue;
@@ -490,7 +501,7 @@
       }
       const P = ctx.players[row.pid];
       const rep = best(row.slot, new Set());
-      const repTxt = rep ? ` Best replacement: ${nm(rep)} (${r1(effOf(ctx, rep))}).` : '';
+      const repTxt = rep ? ` Best replacement: ${nm(rep)} (${r1(projOf(ctx, rep))}).` : '';
       if (injFactor(P.inj) === 0 || P.inj === 'Doubtful') {
         alerts.push({ sev: 'now', tab: 'lineup', pid: row.pid, title: `${nm(row.pid)} is ${P.inj === 'IR' ? 'on IR' : P.inj} and in your lineup`, body: `Starting at ${row.slot}.${repTxt}` });
       } else if (ctx.hasProj && !P.p && P.pos !== 'DEF') {
@@ -529,7 +540,7 @@
   }
 
   return {
-    ELIG, makeCtx, effOf, valueOf, pickValue, replacement, optimalLineup, currentLineup, lineupAdvice,
+    ELIG, makeCtx, effOf, projOf, valueOf, pickValue, replacement, optimalLineup, currentLineup, lineupAdvice,
     waivers, positionReport, tradeOffers, matchup, buildAlerts, activeOf, benchOf, myTeam, teamOf, unknownSlots, rawSlots,
     facts, ageMult, r1,
   };
