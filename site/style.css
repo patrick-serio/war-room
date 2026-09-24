@@ -57,8 +57,12 @@ h1, h2, h3, p { margin: 0; }
 .top .wrap { display: flex; align-items: center; gap: 10px; }
 .brand { font: 800 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--ink); display: flex; align-items: center; gap: 8px; white-space: nowrap; flex: none; }
 .brand::before { content: ""; width: 18px; height: 6px; background: var(--accent); border-radius: 1px; }
+.icon-btn {
+  margin-left: auto; flex: none; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--line); cursor: pointer; box-shadow: var(--shadow); color: var(--ink-2);
+}
 .lg-btn {
-  margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px;
+  min-width: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px;
   background: var(--surface); border: 1px solid var(--line); cursor: pointer; text-align: left; box-shadow: var(--shadow);
 }
 .lg-btn .nm { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 52vw; }
@@ -189,6 +193,12 @@ nav.tabs .badge { position: absolute; top: 5px; left: calc(50% + 8px); min-width
 .lg-opt[aria-current="true"] { box-shadow: inset 3px 0 0 var(--accent); }
 .lg-opt[disabled] { opacity: .55; cursor: default; }
 .lg-opt .n1 { font-weight: 600; } .lg-opt .n2 { font-size: 13px; color: var(--ink-2); }
+.sheet h4 { font: 800 12px/1 var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); margin: 18px 0 8px; }
+.sheet h4:first-of-type { margin-top: 0; }
+.gloss { margin: 0; }
+.gloss dt { font-weight: 700; margin-top: 10px; }
+.gloss dt:first-child { margin-top: 0; }
+.gloss dd { margin: 2px 0 0; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
 
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: no-preference) { .sheet { animation: up .18s ease-out; } @keyframes up { from { transform: translateY(20px); opacity: 0; } } }

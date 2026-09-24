@@ -55,8 +55,10 @@ def num(x):
         return None
 
 
-def r1(x):
-    return None if x is None else round(x, 1)
+def r2(x):
+    # Keep Sleeper's own precision here so the site sums full-precision numbers
+    # and rounds once for display, instead of compounding per-player rounding.
+    return None if x is None else round(x, 2)
 
 
 def pos_params(extra):
@@ -77,9 +79,9 @@ def fetch_projections(season, week):
         out[pid] = {
             "opp": it.get("opponent"),
             "tm": it.get("team"),
-            "ppr": r1(ppr),
-            "half": r1(num(st.get("pts_half_ppr"))),
-            "std": r1(num(st.get("pts_std"))),
+            "ppr": r2(ppr),
+            "half": r2(num(st.get("pts_half_ppr"))),
+            "std": r2(num(st.get("pts_std"))),
         }
     return out
 
@@ -104,9 +106,9 @@ def fetch_recent(season, week, lookback=4):
             rec = num(st.get("rec")) or 0
             per.setdefault(pid, []).append({
                 "wk": wk,
-                "ppr": r1(ppr),
-                "half": r1(num(st.get("pts_half_ppr"))),
-                "std": r1(num(st.get("pts_std"))),
+                "ppr": r2(ppr),
+                "half": r2(num(st.get("pts_half_ppr"))),
+                "std": r2(num(st.get("pts_std"))),
                 "tgt": num(st.get("rec_tgt")) or 0,
                 "tch": rush + rec,
             })

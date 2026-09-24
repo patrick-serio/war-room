@@ -30,6 +30,7 @@
     tab: TABS.some((t) => t.id === hashTab) ? hashTab : store.get('tab', 'roster'),
     wpos: store.get('wpos', ['RB', 'WR', 'TE']),
     tmode: 'scan', tpos: 'WR', tmax: 2,
+    glossary: false,
   };
   const ctxs = new Map();
   const memo = new Map();
@@ -230,6 +231,9 @@
     const sc = { ppr: 'PPR', half: 'Half PPR', std: 'Standard' }[lg && lg.scoring] || '';
     const stale = D && state.mode !== 'demo' && hoursSince(D.generated_at) > 30;
     return `<header class="top"><div class="wrap"><div class="brand">War Room</div>
+      <button class="icon-btn" data-act="glossary" aria-haspopup="dialog" aria-label="What these numbers mean" title="What these numbers mean">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.2a2.6 2.6 0 1 1 3.6 2.4c-1 .4-1.6 1.1-1.6 2.3"/><path d="M12 17.3h.01"/></svg>
+      </button>
       ${lg ? `<button class="lg-btn" data-act="sheet" aria-haspopup="dialog"><span class="nm">${esc(lg.name)}</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>` : `<button class="lg-btn" data-act="sheet"><span class="nm">Leagues</span></button>`}</div>
       ${lg ? `<div class="wrap subbar">${state.mode === 'demo' ? '<span class="chip demo">Demo, fictional players</span>' : ''}<span class="chip">${esc(fmt)}</span><span class="chip">${esc(sc)}</span><span class="chip">Week ${esc(D.week)}</span>${state.mode === 'demo' ? '' : `<span class="${stale ? 'stale' : ''}">Updated ${esc(ago(D.generated_at))}</span>`}</div>` : ''}</header>`;
   }
@@ -252,6 +256,32 @@
       ${state.sheetMsg ? `<p class="hint" style="padding-top:8px">${esc(state.sheetMsg)}</p>` : ''}</div></div>`;
   }
 
+  const GLOSSARY = [
+    ['Every screen', [
+      ['Proj', "Sleeper's own projected fantasy points for that player this week, in your league's scoring format. Counted as 0 if he's Out, IR, Suspended or on a bye; cut about 40% if Doubtful and 7% if Questionable."],
+      ['Value', "Redraft leagues: value over replacement, how many points better this player is than a readily available replacement at his position, scaled up so a difference-making starter reads far higher than a bench stash. Dynasty or keeper leagues: blends that same value-over-replacement with the player's overall rank and an age curve, so a young, highly-ranked player scores above a same-production veteran."],
+    ]],
+    ['Lineup tab', [
+      ['Gain (a swap)', "The extra points per week starting the suggested player over the one he replaces is worth -- just the difference between their Proj numbers."],
+      ['Toss-up', "Two options within 1.5 points of Proj. Since the raw projection can't call something that close, the lean shown underneath factors in recent-game scoring and target or touch trends -- listed as the reasons below it."],
+    ]],
+    ['Waivers tab', [
+      ['Lineup +X pts a week', "How much adding this free agent would improve your best possible lineup's weekly total, compared to your best lineup without him."],
+      ['Trending', "Added by a lot of Sleeper managers, across all of Sleeper, in the last 48 hours."],
+      ['Drop', "The weakest bench player you could spare at any position, without leaving you short a kicker, DEF, TE, or (in Superflex leagues) a backup QB."],
+    ]],
+    ['Trades tab', [
+      ['Need / Balanced / Surplus', "Compares your weakest starter at a position to the median team's weakest starter there. \"Need\" means you're below that bar; \"Surplus\" means even your bench beats it."],
+      ['Value X for Y', "The same Value numbers from each side of a trade, added up, so you can eyeball whether a package is roughly fair (dynasty and keeper leagues only)."],
+      ['You / Them +X pts a week', "How much the trade would move each side's best-lineup total, assuming both sides then start their best lineup."],
+    ]],
+  ];
+  function glossary() {
+    const body = GLOSSARY.map(([h, rows]) => `<h4>${esc(h)}</h4><dl class="gloss">${rows.map(([t, d]) => `<dt>${esc(t)}</dt><dd>${esc(d)}</dd>`).join('')}</dl>`).join('');
+    return `<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-label="What these numbers mean"><div class="wrap"><h3>What these numbers mean</h3>${body}
+      <div style="height:4px"></div><p class="hint">Sleeper only for now; ESPN support is planned. Data refreshes automatically every few hours.</p></div></div>`;
+  }
+
   function render() {
     const D = cur();
     const lg = currentLeague();
@@ -260,7 +290,7 @@
     if (!D || !lg) {
       const msg = state.error ? `Could not load your league data. ${esc(state.error)}` : (D ? 'No leagues found for this Sleeper account this season.' : 'Loading…');
       body = `<div class="card empty"><h3>${state.error || (D && !lg) ? 'No league data yet' : 'Loading'}</h3><p class="hint">${msg}</p>${state.error || (D && !lg) ? '<p class="hint">The first scheduled refresh may not have run. You can still look around the demo league.</p><button class="btn primary" data-act="demo">Open the demo league</button>' : ''}</div>`;
-      app.innerHTML = `${header(D, null)}<main class="wrap">${body}</main>${state.sheet ? sheet() : ''}`;
+      app.innerHTML = `${header(D, null)}<main class="wrap">${body}</main>${state.sheet ? sheet() : ''}${state.glossary ? glossary() : ''}`;
       return;
     }
     const ctx = ctxFor(D, lg);
@@ -271,7 +301,7 @@
       console.error(e);
       body = `<div class="card empty"><h3>Something went wrong</h3><p class="hint">${esc(e.message)}</p></div>`;
     }
-    app.innerHTML = `${header(D, lg)}<main class="wrap">${body}</main>${nav(alertCount)}${state.sheet ? sheet() : ''}`;
+    app.innerHTML = `${header(D, lg)}<main class="wrap">${body}</main>${nav(alertCount)}${state.sheet ? sheet() : ''}${state.glossary ? glossary() : ''}`;
   }
 
   async function copyText(text) {
@@ -295,7 +325,8 @@
       try { history.replaceState(null, '', '#' + state.tab); } catch (err) { /* ignore */ }
       render(); window.scrollTo(0, 0);
     } else if (act === 'sheet') { state.sheet = true; state.sheetMsg = ''; render(); }
-    else if (act === 'close') { state.sheet = false; render(); }
+    else if (act === 'glossary') { state.glossary = true; render(); }
+    else if (act === 'close') { state.sheet = false; state.glossary = false; render(); }
     else if (act === 'league') { state.leagueId = el.dataset.id; if (state.mode === 'live') store.set('league', state.leagueId); state.sheet = false; render(); window.scrollTo(0, 0); }
     else if (act === 'wpos') {
       const p = el.dataset.pos;
@@ -322,7 +353,7 @@
     }
   });
 
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.sheet) { state.sheet = false; render(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.sheet || state.glossary)) { state.sheet = false; state.glossary = false; render(); } });
 
   (async function init() {
     if (PREVIEW) { state.demo = PREVIEW; state.mode = 'demo'; state.live = null; render(); return; }
