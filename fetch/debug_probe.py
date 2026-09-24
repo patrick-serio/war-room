@@ -30,13 +30,7 @@ user = get(f"{API}/user/{USERNAME}")
 uid = user["user_id"]
 leagues = get(f"{API}/user/{uid}/leagues/nfl/{season}")
 
-players_db = get(f"{API}/players/nfl")
-name_to_pid = {}
-for pid, p in players_db.items():
-    nm = f"{p.get('first_name','')} {p.get('last_name','')}".strip()
-    name_to_pid.setdefault(nm, pid)
-
-target_pid = name_to_pid.get("Josh Allen")
+target_pid = "4984"  # Josh Allen, Bills QB (confirmed from an earlier matchup dump; Sleeper also has a Josh Allen LB)
 print("Josh Allen pid:", target_pid)
 
 proj_params = [("season_type", "regular")] + [("position[]", p) for p in POS] + [("order_by", "pts_ppr")]
