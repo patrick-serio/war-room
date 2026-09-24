@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Fetch a Sleeper user's NFL leagues and write one compact JSON file for the site.
+"""Fetch a Sleeper user's NFL leagues, plus any ESPN leagues configured via
+ESPN_SWID/ESPN_S2/ESPN_LEAGUE_IDS, and write one compact JSON file for the
+site.
 
-Runs inside GitHub Actions (which can reach Sleeper). Endpoints:
+Runs inside GitHub Actions (which can reach Sleeper and ESPN). Endpoints:
   documented:   https://api.sleeper.app/v1/...
   undocumented: https://api.sleeper.com/projections/... and /stats/...  (widely used)
+  undocumented: ESPN's Fantasy v3 API (see fetch/espn.py)
 
 Anything optional that fails is recorded in `notes` and the site degrades
 instead of the whole run failing.
@@ -15,6 +18,8 @@ import sys
 import time
 
 import requests
+
+import espn
 
 API = os.environ.get("SLEEPER_API", "https://api.sleeper.app/v1").rstrip("/")
 PROJ_API = os.environ.get("SLEEPER_PROJ_API", "https://api.sleeper.com").rstrip("/")
@@ -357,6 +362,12 @@ def main():
     missing = {p for lg in leagues for t in lg["teams"] for p in t["players"]} - set(players)
     if missing:
         NOTES.append(f"{len(missing)} rostered players not in Sleeper's player list (skipped)")
+
+    espn_league_ids = [x.strip() for x in os.environ.get("ESPN_LEAGUE_IDS", "").split(",") if x.strip()]
+    if espn_league_ids:
+        espn_leagues, espn_players = espn.fetch(espn_league_ids, int(season), week, NOTES)
+        leagues += espn_leagues
+        players.update(espn_players)
 
     payload = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),

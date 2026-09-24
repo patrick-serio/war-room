@@ -1,13 +1,17 @@
 # War Room
 
-Phone-first fantasy football helper. A scheduled GitHub Action pulls Sleeper data
-(`fetch/build_data.py`), writes `site/data/leagues.json`, and deploys `site/` to GitHub Pages.
-All analysis (lineup, waivers, trades, alerts) runs in the browser from `site/logic.js`.
+Phone-first fantasy football helper. A scheduled GitHub Action pulls Sleeper and
+ESPN data (`fetch/build_data.py`, `fetch/espn.py`), writes `site/data/leagues.json`,
+and deploys `site/` to GitHub Pages. All analysis (lineup, waivers, trades, alerts)
+runs in the browser from `site/logic.js`.
 
-- `fetch/` data fetcher and output sanity check
+- `fetch/` data fetchers (`build_data.py` for Sleeper, `espn.py` for ESPN) and output sanity check
 - `site/` the static app (`index.html`, `app.js`, `logic.js`, `style.css`, `data/demo.json`)
 - `tests/` logic tests (`node tests/logic.test.js`), browser tests (`tests/e2e.js`), mock Sleeper server
 - `tools/make_preview.py` builds a single-file demo-only preview
 - `.github/workflows/refresh.yml` refresh every 3 hours and deploy
 
-ESPN support is not built yet. It needs the ESPN cookies (`SWID`, `espn_s2`) stored as GitHub secrets.
+ESPN leagues need `ESPN_SWID` and `ESPN_S2` (from a logged-in ESPN browser session's
+cookies) stored as GitHub Actions secrets, plus the league IDs listed in
+`ESPN_LEAGUE_IDS` in `refresh.yml` (comma-separated). ESPN leagues are treated as
+redraft only for now (no dynasty/keeper draft-pick tracking, no taxi squad).

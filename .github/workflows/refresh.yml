@@ -28,6 +28,9 @@ jobs:
       - name: Fetch league data
         env:
           SLEEPER_USERNAME: PatrickSerio
+          ESPN_SWID: ${{ secrets.ESPN_SWID }}
+          ESPN_S2: ${{ secrets.ESPN_S2 }}
+          ESPN_LEAGUE_IDS: "610033022,43688494"
         run: python fetch/build_data.py
       - name: Check the output
         run: python fetch/check_output.py
