@@ -8,12 +8,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install requests
       - name: Run diagnostic
-        env:
-          ESPN_SWID: ${{ secrets.ESPN_SWID }}
-          ESPN_S2: ${{ secrets.ESPN_S2 }}
-        run: python fetch/debug_actuals1.py
+        run: node fetch/debug_value2.js

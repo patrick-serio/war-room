@@ -297,11 +297,14 @@
           // he'd cost to keep is a good long-term signal -- discount
           // proportionally to his real production, same shape as the
           // age-based branch below. Long-term keeper value shouldn't swing
-          // on one noisy week (a tough matchup, a game-flow dud, a bye
-          // dragging this week's projection to 0), so use the stronger of
-          // this week's projection and his recent trailing average.
+          // on one noisy week -- but a plain max(projection, recent) is
+          // asymmetric (a huge recent week inflates just as hard as a bad
+          // one would have been "protected" against, and early in the
+          // season "recent" can be a single outlier game). Blend instead,
+          // mostly weighted to the forward projection, so any one game
+          // only nudges value rather than swinging it either direction.
           const recent = form(ctx, P);
-          const prod = recent != null ? Math.max(effOf(ctx, pid), recent) : effOf(ctx, pid);
+          const prod = recent != null ? 0.7 * effOf(ctx, pid) + 0.3 * recent : effOf(ctx, pid);
           const vorK = Math.max(0, prod - replacement(ctx)[P.pos]) * 5;
           v = 0.6 * vorK * keeperMult(P.kprd);
         } else if (ctx.dyn && P.rank != null) {
