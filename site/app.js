@@ -88,10 +88,14 @@
     const lead = o.slot ? `<span class="slot">${esc(o.slot.replace('SUPER_FLEX', 'SFLX').replace('WRRB_FLEX', 'W/R').replace('REC_FLEX', 'W/T'))}</span>` : `<span class="lead"><span class="pos pos-${P.pos}">${P.pos}</span></span>`;
     const num = noProj || proj === 0 ? '<b class="dim">–</b>' : `<b>${f1(proj)}</b>`;
     const showVal = ctx.dyn && o.value !== false && P.pos !== 'K' && P.pos !== 'DEF';
-    // Injury discount is a sub-value, not baked into the main number shown above.
-    const hurt = !showVal && proj > 0 && Math.abs(eff - proj) > 0.05;
-    const under = showVal ? `<small><span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span></small>`
-      : hurt ? `<small>adj ${f1(eff)}</small>` : '<small>proj</small>';
+    // Injury discount is a sub-value, not baked into the main number shown above --
+    // shown alongside Value (dynasty) or in place of the plain "proj" label, never dropped for one or the other.
+    const hurt = proj > 0 && Math.abs(eff - proj) > 0.05;
+    const bits = [];
+    if (showVal) bits.push(`<span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span>`);
+    if (hurt) bits.push(`adj ${f1(eff)}`);
+    if (!bits.length) bits.push('proj');
+    const under = `<small>${bits.join(' · ')}</small>`;
     const posTag = o.slot ? `<span class="pos pos-${P.pos}">${P.pos}</span>` : '';
     return `<div class="prow">${lead}<div class="pmain"><div class="pname">${posTag}<span class="t">${esc(P.n)}</span>${injBadge(P.inj)}</div><div class="pmeta">${esc(o.sub || meta)}</div></div><div class="pnum">${num}${under}</div></div>`;
   }
