@@ -447,7 +447,10 @@
       // combos()/ratio-fairness check below already keeps a low-value piece
       // from distorting a package on its own.
       const keeperAsset = ctx.dyn && P.kprd != null;
-      if (v >= 4 || keeperAsset || (o.mustGive && o.mustGive.includes(p))) assets.push({ type: 'player', pid: p, pos: P.pos, v });
+      // Lower floor across the board -- more candidate pieces means more
+      // package combinations get tried; the ratio-fairness check below is
+      // what keeps any given package sane, not this floor.
+      if (v >= 1 || keeperAsset || (o.mustGive && o.mustGive.includes(p))) assets.push({ type: 'player', pid: p, pos: P.pos, v });
     });
     (me.picks || []).filter((pk) => pk.from !== undefined).forEach((pk) => assets.push({ type: 'pick', pk, v: pickValue(pk, season) }));
     assets.sort((a, b) => b.v - a.v);
@@ -474,15 +477,15 @@
         .filter((p) => ctx.players[p] && TRADE_POS.includes(ctx.players[p].pos)
           && (o.playerIds ? o.playerIds.includes(p) : (!o.pos || ctx.players[p].pos === o.pos)))
         .map((p) => ({ pid: p, v: valueOf(ctx, p) }))
-        .filter((t) => o.playerIds || t.v >= 12)
+        .filter((t) => o.playerIds || t.v >= 6)
         .sort((a, b) => b.v - a.v)
-        .slice(0, o.playerIds ? o.playerIds.length : 10);
+        .slice(0, o.playerIds ? o.playerIds.length : 16);
       for (const G of targets) {
         combos(pool, maxGive, G.v * 2.2, (give, rawSum) => {
           // Depth is worth less than stars: later assets in a package count for less.
           const sum = give.map((x) => x.v).sort((a, b) => b - a).reduce((t, v, i) => t + v * [1, 0.7, 0.5][i], 0);
           const ratio = sum / G.v;
-          if (ratio < 0.85 || ratio > 1.35) return;
+          if (ratio < 0.75 || ratio > 1.5) return;
           const givePlayers = give.filter((x) => x.type === 'player').map((x) => x.pid);
           // Shopping specific players: only keep packages that actually include one.
           if (o.mustGive && !o.mustGive.some((pid) => givePlayers.includes(pid))) return;
@@ -492,8 +495,17 @@
           const dThem = optimalLineup(ctx, themAfter).total - baseThem;
           const vDiff = G.v - sum;
           const hasPick = give.some((x) => x.type === 'pick');
-          const themOk = ctx.dyn ? (ratio >= 0.95 && (dThem >= -6 || (hasPick && ratio >= 1 && dThem >= -8))) || dThem >= 1 : dThem >= 0.3;
-          const meOk = dMe >= 0.5 || (ctx.dyn && vDiff >= 5 && dMe >= -1.5);
+          // Loosened across the board: surface more candidate trades and let
+          // the user's own judgment decide whether they make sense, rather
+          // than requiring both sides' optimal lineup to clearly improve
+          // right now. A roughly fair-value trade (the ratio check above)
+          // that doesn't badly hurt either side still shows up.
+          const themOk = ctx.dyn
+            ? (ratio >= 0.85 && (dThem >= -10 || (hasPick && ratio >= 1 && dThem >= -12))) || dThem >= 0.5
+            : (ratio >= 0.8 && dThem >= -3) || dThem >= 0.3;
+          const meOk = dMe >= 0.3
+            || (ctx.dyn && vDiff >= 3 && dMe >= -3)
+            || (!ctx.dyn && ratio <= 1.2 && dMe >= -2);
           if (!themOk || !meOk) return;
           const score = dMe + 0.5 * Math.min(Math.max(dThem, 0), 2) + 0.25 * Math.max(Math.min(dThem, 0), -8) + (ctx.dyn ? 0.1 * vDiff : 0) - 0.15 * (give.length - 1);
           results.push({ opp, give: give.slice(), get: G.pid, dMe: r1(dMe), dThem: r1(dThem), vGive: r1(sum), vGet: G.v, ratio, score });
@@ -506,8 +518,8 @@
     // Targeting or shopping specific players: show a few different package
     // ideas instead of the one-offer-per-player cap used for open-ended scans.
     const anchored = o.playerIds || o.mustGive;
-    const getCap = anchored ? 3 : 1;
-    const teamCap = anchored ? 4 : 2;
+    const getCap = anchored ? 4 : 2;
+    const teamCap = anchored ? 5 : 3;
     const picked = [];
     for (const r of results) {
       const kt = r.opp.roster_id;
@@ -515,7 +527,7 @@
       perTeam[kt] = (perTeam[kt] || 0) + 1;
       perGet[r.get] = (perGet[r.get] || 0) + 1;
       picked.push(decorate(ctx, r));
-      if (picked.length >= (o.limit || 8)) break;
+      if (picked.length >= (o.limit || 12)) break;
     }
     return picked;
   }
