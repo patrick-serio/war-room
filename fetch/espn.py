@@ -179,9 +179,24 @@ def build_league(session, league_id, season, week, notes, pro_teams, pro_opp):
     # draftDetail.picks, which lists every pick's roundId including picks
     # auto-filled by a returning keeper). Undrafted players (picked up off
     # waivers this season) get no entry, treated as no known keeper cost.
+    #
+    # This misses players whose keeper slot was assigned outside the normal
+    # draft/waiver record -- confirmed for this league (keeperOrderType
+    # "MANUAL"): checked draftDetail.picks for the current and two prior
+    # seasons, the full mTransactions2 log with a broad filter, pending
+    # transactions, and league communications, and none carry the
+    # commissioner's manual keeper-round assignment. ESPN_KEEPER_OVERRIDES
+    # (env var, JSON: {"<league_id>": {"<espn player id>": <round>}}) fills
+    # those gaps by hand.
     keeper_count = d.get("settings", {}).get("draftSettings", {}).get("keeperCount") or 0
     draft_rounds = {pk["playerId"]: pk["roundId"] for pk in d.get("draftDetail", {}).get("picks", [])
                     if pk.get("playerId") and pk.get("roundId")}
+    try:
+        overrides = json.loads(os.environ.get("ESPN_KEEPER_OVERRIDES") or "{}")
+    except (ValueError, TypeError):
+        overrides = {}
+        notes.append(f"{league_name}: ESPN_KEEPER_OVERRIDES is not valid JSON, ignoring it")
+    draft_rounds.update({int(pid): rd for pid, rd in overrides.get(league_id, {}).items()})
     swid = session.cookies.get("SWID", "").strip("{}").lower()
     teams_raw = d.get("teams", [])
     mine = next((t for t in teams_raw if swid in

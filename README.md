@@ -14,4 +14,12 @@ runs in the browser from `site/logic.js`.
 ESPN leagues need `ESPN_SWID` and `ESPN_S2` (from a logged-in ESPN browser session's
 cookies) stored as GitHub Actions secrets, plus the league IDs listed in
 `ESPN_LEAGUE_IDS` in `refresh.yml` (comma-separated). ESPN leagues are treated as
-redraft only for now (no dynasty/keeper draft-pick tracking, no taxi squad).
+redraft only for now (no taxi squad, no tradeable future picks).
+
+A league with `draftSettings.keeperCount > 0` is tagged format "keeper" and
+gets long-term-value trade logic (like dynasty Sleeper leagues), weighted by
+each player's keeper cost -- the draft round he currently occupies, from
+`draftDetail.picks`. Some keeper assignments (e.g. a commissioner-run manual
+keeper process) aren't in any ESPN-queryable draft or transaction record; add
+those by hand in `ESPN_KEEPER_OVERRIDES` in `refresh.yml`
+(`{"<league_id>": {"<espn player id>": <round>}}`).
