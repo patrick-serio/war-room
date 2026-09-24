@@ -30,7 +30,7 @@
     tab: TABS.some((t) => t.id === hashTab) ? hashTab : store.get('tab', 'roster'),
     wpos: store.get('wpos', ['RB', 'WR', 'TE']),
     tmode: 'scan', tpos: 'WR', tmax: 2,
-    glossary: false,
+    glossary: false, matchupOpen: false,
   };
   const ctxs = new Map();
   const memo = new Map();
@@ -111,7 +111,8 @@
       out += `<section>${sectionH('This week')}<div class="card match">
         <div class="side"><div class="tn">${esc(me.name)}</div><div class="pts">${f1(m.me)}</div></div><div class="vs">VS</div>
         <div class="side"><div class="tn">${esc(m.oppTeam.name)}</div><div class="pts">${f1(m.opp)}</div></div>
-        <div class="foot"><span>Projected with your current lineup</span><span class="${cls}">${txt}</span></div></div></section>`;
+        <div class="foot"><span>Projected with your current lineup</span><span class="${cls}">${txt}</span></div></div>
+        <button class="btn" data-act="matchup" style="width:100%;margin-top:8px">See both starting lineups</button></section>`;
     }
     const cl = FF.currentLineup(ctx);
     out += `<section>${sectionH('Starters', f1(cl.total) + ' proj')}<div class="card list">${cl.slots.map((r) => (r.pid ? playerRow(ctx, r.pid, { slot: r.slot }) : emptyRow(r.slot))).join('')}</div></section>`;
@@ -282,6 +283,19 @@
       <div style="height:4px"></div><p class="hint">Sleeper only for now; ESPN support is planned. Data refreshes automatically every few hours.</p></div></div>`;
   }
 
+  function matchupSheet(ctx) {
+    const m = FF.matchup(ctx);
+    if (!m) return '';
+    const me = FF.myTeam(ctx);
+    const side = (team, lineup) => `<h4>${esc(team.name)}<span style="float:right;color:var(--ink)">${f1(lineup.total)}</span></h4>
+      <div class="card list">${lineup.slots.map((r) => (r.pid ? playerRow(ctx, r.pid, { slot: r.slot }) : emptyRow(r.slot))).join('')}</div>`;
+    return `<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-label="This week's matchup"><div class="wrap"><h3>This week's matchup</h3>
+      ${side(me, FF.currentLineup(ctx, me))}
+      <div style="height:14px"></div>
+      ${side(m.oppTeam, FF.currentLineup(ctx, m.oppTeam))}
+      <div style="height:4px"></div><p class="hint">Both sides are each team's actual starters as currently set in Sleeper (not the optimal lineup), with the same Proj numbers used everywhere else. If a total looks wrong, check here for a starter with no Proj (bye or inactive, shown as "–"), an unexpected injury discount, or a player who shouldn't be starting.</p></div></div>`;
+  }
+
   function render() {
     const D = cur();
     const lg = currentLeague();
@@ -301,7 +315,7 @@
       console.error(e);
       body = `<div class="card empty"><h3>Something went wrong</h3><p class="hint">${esc(e.message)}</p></div>`;
     }
-    app.innerHTML = `${header(D, lg)}<main class="wrap">${body}</main>${nav(alertCount)}${state.sheet ? sheet() : ''}${state.glossary ? glossary() : ''}`;
+    app.innerHTML = `${header(D, lg)}<main class="wrap">${body}</main>${nav(alertCount)}${state.sheet ? sheet() : ''}${state.glossary ? glossary() : ''}${state.matchupOpen ? matchupSheet(ctx) : ''}`;
   }
 
   async function copyText(text) {
@@ -326,7 +340,8 @@
       render(); window.scrollTo(0, 0);
     } else if (act === 'sheet') { state.sheet = true; state.sheetMsg = ''; render(); }
     else if (act === 'glossary') { state.glossary = true; render(); }
-    else if (act === 'close') { state.sheet = false; state.glossary = false; render(); }
+    else if (act === 'matchup') { state.matchupOpen = true; render(); }
+    else if (act === 'close') { state.sheet = false; state.glossary = false; state.matchupOpen = false; render(); }
     else if (act === 'league') { state.leagueId = el.dataset.id; if (state.mode === 'live') store.set('league', state.leagueId); state.sheet = false; render(); window.scrollTo(0, 0); }
     else if (act === 'wpos') {
       const p = el.dataset.pos;
@@ -353,7 +368,7 @@
     }
   });
 
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.sheet || state.glossary)) { state.sheet = false; state.glossary = false; render(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.sheet || state.glossary || state.matchupOpen)) { state.sheet = false; state.glossary = false; state.matchupOpen = false; render(); } });
 
   (async function init() {
     if (PREVIEW) { state.demo = PREVIEW; state.mode = 'demo'; state.live = null; render(); return; }
