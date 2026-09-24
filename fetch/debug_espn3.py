@@ -116,8 +116,11 @@ def main():
         print(f"Cod Squad free-agent check failed: {e}")
 
     both_leagues, both_players = espn.fetch(["610033022", "43688494"], season, week, notes)
-    key = "espn:3918298"
-    print(f"\nespn.fetch() with BOTH league ids in production order: {key} -> {json.dumps(both_players.get(key))}")
+    br_key = "espn:610033022:3918298"
+    cod_key = "espn:43688494:3918298"
+    print(f"\nespn.fetch() with BOTH league ids in production order (post-fix, league-scoped pids):")
+    print(f"  Belichicks Receivers Josh Allen ({br_key}) -> {json.dumps(both_players.get(br_key))}")
+    print(f"  Cod Squad Josh Allen ({cod_key}) -> {json.dumps(both_players.get(cod_key))}")
 
 
 if __name__ == "__main__":

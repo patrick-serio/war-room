@@ -145,7 +145,7 @@ def fetch_free_agents(session, base, league_id, week, season, rostered, notes, l
         return [], {}
     pool_ids, players = [], {}
     for entry in d.get("players", []):
-        res = build_player("espn:", entry, week, season, pro_teams, pro_opp)
+        res = build_player(f"espn:{league_id}:", entry, week, season, pro_teams, pro_opp)
         if not res:
             continue
         pid, pdata = res
@@ -196,7 +196,7 @@ def build_league(session, league_id, season, week, notes, pro_teams, pro_opp):
         by_slot = {}
         active_ids, reserve_ids = [], []
         for e in entries:
-            res = build_player("espn:", e.get("playerPoolEntry", {}), week, season, pro_teams, pro_opp)
+            res = build_player(f"espn:{league_id}:", e.get("playerPoolEntry", {}), week, season, pro_teams, pro_opp)
             if not res:
                 continue
             pid, pdata = res
