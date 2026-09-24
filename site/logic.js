@@ -52,7 +52,7 @@
   function makeCtx(D, lg) {
     const players = D.players;
     const hasProj = Object.values(players).some((p) => p.p);
-    return { D, lg, players, hasProj, dyn: lg.format !== 'redraft', cache: new Map(), pcache: new Map(), vcache: new Map(), _repl: null };
+    return { D, lg, players, hasProj, dyn: lg.format !== 'redraft', cache: new Map(), pcache: new Map(), vcache: new Map(), vbcache: new Map(), _repl: null };
   }
 
   // The headline number is Sleeper's own projection, full stop -- not blended
@@ -284,37 +284,77 @@
     return repl;
   }
 
-  function valueOf(ctx, pid) {
-    if (ctx.vcache.has(pid)) return ctx.vcache.get(pid);
+  // Same math as valueOf(), but returns the components alongside the
+  // number so the UI can show why a player landed where he did instead of
+  // a single opaque figure. valueOf() is a thin wrapper around this.
+  function valueBreakdown(ctx, pid) {
+    if (ctx.vbcache.has(pid)) return ctx.vbcache.get(pid);
     const P = ctx.players[pid];
-    let v = 0;
-    if (P) {
-      if (P.pos === 'K' || P.pos === 'DEF') v = 1;
-      else {
-        const vor = Math.max(0, effOf(ctx, pid) - replacement(ctx)[P.pos]) * 5;
-        if (ctx.dyn && P.kprd != null) {
-          // Keeper league (ESPN): no age/dynasty-rank data, but the round
-          // he'd cost to keep is a good long-term signal -- discount
-          // proportionally to his real production, same shape as the
-          // age-based branch below. Long-term keeper value shouldn't swing
-          // on one noisy week -- but a plain max(projection, recent) is
-          // asymmetric (a huge recent week inflates just as hard as a bad
-          // one would have been "protected" against, and early in the
-          // season "recent" can be a single outlier game). Blend instead,
-          // mostly weighted to the forward projection, so any one game
-          // only nudges value rather than swinging it either direction.
-          const recent = form(ctx, P);
-          const prod = recent != null ? 0.7 * effOf(ctx, pid) + 0.3 * recent : effOf(ctx, pid);
-          const vorK = Math.max(0, prod - replacement(ctx)[P.pos]) * 5;
-          v = 0.6 * vorK * keeperMult(P.kprd);
-        } else if (ctx.dyn && P.rank != null) {
-          const base = 100 * Math.exp(-P.rank / 90);
-          v = 0.85 * base * ageMult(P.pos, P.age) + 0.15 * vor;
-        } else if (ctx.dyn) v = 0.6 * vor * ageMult(P.pos, P.age);
-        else v = vor;
+    let result;
+    if (!P) {
+      result = { v: 0, parts: [] };
+    } else if (P.pos === 'K' || P.pos === 'DEF') {
+      result = { v: 1, parts: [{ text: 'Fixed baseline for K/DEF -- not weighed by production here' }] };
+    } else {
+      const vor = Math.max(0, effOf(ctx, pid) - replacement(ctx)[P.pos]) * 5;
+      if (ctx.dyn && P.kprd != null) {
+        // Keeper league (ESPN): no age/dynasty-rank data, but the round
+        // he'd cost to keep is a good long-term signal -- discount
+        // proportionally to his real production, same shape as the
+        // age-based branch below. Long-term keeper value shouldn't swing
+        // on one noisy week -- but a plain max(projection, recent) is
+        // asymmetric (a huge recent week inflates just as hard as a bad
+        // one would have been "protected" against, and early in the
+        // season "recent" can be a single outlier game). Blend instead,
+        // mostly weighted to the forward projection, so any one game
+        // only nudges value rather than swinging it either direction.
+        const recent = form(ctx, P);
+        const prod = recent != null ? 0.7 * effOf(ctx, pid) + 0.3 * recent : effOf(ctx, pid);
+        const vorK = Math.max(0, prod - replacement(ctx)[P.pos]) * 5;
+        const mult = keeperMult(P.kprd);
+        result = {
+          v: r1(0.6 * vorK * mult),
+          parts: [
+            { text: `${r1(vorK)} pts/wk over replacement` },
+            { text: `× ${mult} keeper-cost discount (Round ${P.kprd})` },
+            { text: '× 0.6 scale' },
+          ],
+        };
+      } else if (ctx.dyn && P.rank != null) {
+        const base = 100 * Math.exp(-P.rank / 90);
+        const am = ageMult(P.pos, P.age);
+        result = {
+          v: r1(0.85 * base * am + 0.15 * vor),
+          parts: [
+            { text: `Dynasty rank #${P.rank} → ${r1(base)} base value (85% weight)` },
+            { text: `× ${am} age curve (age ${P.age != null ? P.age : 'unknown'})` },
+            { text: `+ ${r1(vor)} pts/wk over replacement (15% weight)` },
+          ],
+        };
+      } else if (ctx.dyn) {
+        const am = ageMult(P.pos, P.age);
+        result = {
+          v: r1(0.6 * vor * am),
+          parts: [
+            { text: `${r1(vor)} pts/wk over replacement` },
+            { text: `× ${am} age curve (age ${P.age != null ? P.age : 'unknown'})` },
+            { text: '× 0.6 scale' },
+          ],
+        };
+      } else {
+        result = {
+          v: r1(vor),
+          parts: [{ text: `${r1(vor)} pts/wk over the best player you could pick up on waivers` }],
+        };
       }
     }
-    v = r1(v);
+    ctx.vbcache.set(pid, result);
+    return result;
+  }
+
+  function valueOf(ctx, pid) {
+    if (ctx.vcache.has(pid)) return ctx.vcache.get(pid);
+    const v = valueBreakdown(ctx, pid).v;
     ctx.vcache.set(pid, v);
     return v;
   }
@@ -613,7 +653,7 @@
   }
 
   return {
-    ELIG, makeCtx, effOf, projOf, valueOf, pickValue, replacement, optimalLineup, currentLineup, lineupAdvice,
+    ELIG, makeCtx, effOf, projOf, valueOf, valueBreakdown, pickValue, replacement, optimalLineup, currentLineup, lineupAdvice,
     waivers, positionReport, tradeOffers, matchup, buildAlerts, activeOf, benchOf, myTeam, teamOf, unknownSlots, rawSlots,
     facts, ageMult, r1,
   };

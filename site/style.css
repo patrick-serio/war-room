@@ -99,6 +99,7 @@ h2 .n { font-family: var(--body); letter-spacing: 0; font-weight: 500; text-tran
 .inj.q { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
 .inj.o { background: color-mix(in srgb, var(--bad) 20%, transparent); color: var(--bad); }
 .val { font-size: 11px; font-weight: 600; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
+.val-btn { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
 .dim { opacity: .55; }
 
 /* matchup */

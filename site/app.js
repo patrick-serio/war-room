@@ -30,7 +30,7 @@
     tab: TABS.some((t) => t.id === hashTab) ? hashTab : store.get('tab', 'roster'),
     wpos: store.get('wpos', ['RB', 'WR', 'TE']),
     tmode: 'scan', tpos: 'WR', tmax: 2, tsearch: '', tsel: [], gsearch: '', gsel: [],
-    glossary: false, matchupOpen: false,
+    glossary: false, matchupOpen: false, valuePid: null,
   };
   const ctxs = new Map();
   const memo = new Map();
@@ -92,7 +92,7 @@
     // shown alongside Value (dynasty) or in place of the plain "proj" label, never dropped for one or the other.
     const hurt = proj > 0 && Math.abs(eff - proj) > 0.05;
     const bits = [];
-    if (showVal) bits.push(`<span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span>`);
+    if (showVal) bits.push(`<button type="button" class="val val-btn" data-act="value" data-id="${esc(pid)}">Value ${Math.round(FF.valueOf(ctx, pid))}</button>`);
     if (hurt) bits.push(`adj ${f1(eff)}`);
     if (!bits.length) bits.push('proj');
     const under = `<small>${bits.join(' · ')}</small>`;
@@ -261,8 +261,8 @@
       <article class="card offer"><div class="offer-h"><span class="ttl">${esc(o.opp.name)}</span><span class="tier">${esc(o.tier)}</span></div>
       <div class="xfer">${o.give.map((g) => (g.type === 'pick'
         ? `<div class="row"><span class="tag out">Give</span><span class="nm">${esc(g.pk.s)} round ${g.pk.rd} pick</span><span class="v">Value ${Math.round(g.v)}</span></div>`
-        : `<div class="row"><span class="tag out">Give</span><span class="nm">${esc(nm(ctx, g.pid))}</span><span class="v">${ctx.players[g.pid].pos}${ctx.dyn ? ' · V' + Math.round(g.v) : ''}</span></div>`)).join('')}
-        <div class="row"><span class="tag in">Get</span><span class="nm">${esc(nm(ctx, o.get))}</span><span class="v">${ctx.players[o.get].pos}${ctx.dyn ? ' · V' + Math.round(o.vGet) : ''}</span></div></div>
+        : `<div class="row"><span class="tag out">Give</span><span class="nm">${esc(nm(ctx, g.pid))}</span><span class="v">${ctx.players[g.pid].pos}${ctx.dyn ? ` · <button type="button" class="val-btn" data-act="value" data-id="${esc(g.pid)}">V${Math.round(g.v)}</button>` : ''}</span></div>`)).join('')}
+        <div class="row"><span class="tag in">Get</span><span class="nm">${esc(nm(ctx, o.get))}</span><span class="v">${ctx.players[o.get].pos}${ctx.dyn ? ` · <button type="button" class="val-btn" data-act="value" data-id="${esc(o.get)}">V${Math.round(o.vGet)}</button>` : ''}</span></div></div>
       <div class="stats"><span>You <b>${signed(o.dMe)}</b> pts a week</span><span>Them <b>${signed(o.dThem)}</b></span>${ctx.dyn ? `<span>Value <b>${Math.round(o.vGive)}</b> for <b>${Math.round(o.vGet)}</b></span>` : ''}</div>
       ${o.why.length ? `<ul class="reasons">${o.why.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>` : ''}
       <button class="btn" data-act="copy" data-i="${i}">Copy offer message</button></article>`).join('')}</section>
@@ -317,7 +317,7 @@
     ['Every screen', [
       ['Proj', "Sleeper's own projected fantasy points for that player this week, in your league's own scoring rules (computed the same way Sleeper does: his projected stat line times your league's per-stat point values) -- not discounted for anything, so it matches what Sleeper's own app shows."],
       ['adj (under a hurt player)', "The risk-adjusted number: Proj cut to 0 if he's Out, IR, Suspended or on a bye, cut about 60% if Doubtful, about 7% if Questionable. This sub-value (not the Proj shown above it) is what actually decides lineup advice, swap gains, and matchup totals -- so a Questionable starter's real Proj stays visible while the advice still accounts for his risk."],
-      ['Value', "Redraft leagues: value over replacement, how many points better this player is than a readily available replacement at his position, scaled up so a difference-making starter reads far higher than a bench stash. Dynasty or keeper leagues: blends that same value-over-replacement with the player's overall rank and an age curve, so a young, highly-ranked player scores above a same-production veteran. Based on the risk-adjusted (adj) number, not the raw Proj."],
+      ['Value', "Redraft leagues: value over replacement, how many points better this player is than a readily available replacement at his position, scaled up so a difference-making starter reads far higher than a bench stash. Dynasty leagues: blends that same value-over-replacement with the player's overall rank and an age curve, so a young, highly-ranked player scores above a same-production veteran. ESPN keeper leagues: blends value-over-replacement with a discount based on the draft round he'd cost to keep. Based on the risk-adjusted (adj) number, not the raw Proj. It's a relative gauge for comparing players, not a market price -- tap any Value number to see exactly how it was built."],
     ]],
     ['Lineup tab', [
       ['Gain (a swap)', "The extra points per week starting the suggested player over the one he replaces is worth -- just the difference between their Proj numbers."],
@@ -353,6 +353,16 @@
       <div style="height:4px"></div><p class="hint">Both sides are each team's actual starters as currently set in Sleeper (not the optimal lineup), with the same Proj numbers used everywhere else. If a total looks wrong, check here for a starter with no Proj (bye or inactive, shown as "–"), an unexpected injury discount, or a player who shouldn't be starting.</p></div></div>`;
   }
 
+  function valueSheet(ctx, pid) {
+    const P = ctx.players[pid];
+    if (!P) return '';
+    const { v, parts } = FF.valueBreakdown(ctx, pid);
+    return `<div class="scrim" data-act="close"></div><div class="sheet" role="dialog" aria-label="How ${esc(P.n)}'s Value is calculated"><div class="wrap"><h3>${esc(P.n)}</h3>
+      <div class="card" style="padding:14px 16px"><div style="font:800 28px/1 var(--display)">Value ${Math.round(v)}</div>
+      <ul class="reasons" style="margin-top:10px">${parts.map((p) => `<li>${esc(p.text)}</li>`).join('')}</ul></div>
+      <div style="height:4px"></div><p class="hint">Value is a rough, relative gauge for comparing players and judging trades -- not a market price. It weighs how much better than a replacement-level player he is right now, discounted or boosted for long-term signal (age, dynasty rank, or keeper cost, depending on your league).</p></div></div>`;
+  }
+
   function render() {
     // Full-page re-render on every state change would normally steal focus and
     // reset the cursor out of a text input mid-keystroke -- preserve it for the
@@ -379,7 +389,7 @@
       console.error(e);
       body = `<div class="card empty"><h3>Something went wrong</h3><p class="hint">${esc(e.message)}</p></div>`;
     }
-    app.innerHTML = `${header(D, lg)}<main class="wrap">${body}</main>${nav(alertCount)}${state.sheet ? sheet() : ''}${state.glossary ? glossary() : ''}${state.matchupOpen ? matchupSheet(ctx) : ''}`;
+    app.innerHTML = `${header(D, lg)}<main class="wrap">${body}</main>${nav(alertCount)}${state.sheet ? sheet() : ''}${state.glossary ? glossary() : ''}${state.matchupOpen ? matchupSheet(ctx) : ''}${state.valuePid ? valueSheet(ctx, state.valuePid) : ''}`;
     if (restore) {
       const el = app.querySelector(`[data-act="${restore.act}"]`);
       if (el) { el.focus(); el.setSelectionRange(restore.start, restore.end); }
@@ -409,7 +419,8 @@
     } else if (act === 'sheet') { state.sheet = true; state.sheetMsg = ''; render(); }
     else if (act === 'glossary') { state.glossary = true; render(); }
     else if (act === 'matchup') { state.matchupOpen = true; render(); }
-    else if (act === 'close') { state.sheet = false; state.glossary = false; state.matchupOpen = false; render(); }
+    else if (act === 'value') { state.valuePid = el.dataset.id; render(); }
+    else if (act === 'close') { state.sheet = false; state.glossary = false; state.matchupOpen = false; state.valuePid = null; render(); }
     else if (act === 'league') { state.leagueId = el.dataset.id; if (state.mode === 'live') store.set('league', state.leagueId); state.sheet = false; render(); window.scrollTo(0, 0); }
     else if (act === 'wpos') {
       const p = el.dataset.pos;
@@ -453,7 +464,7 @@
     render();
   });
 
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.sheet || state.glossary || state.matchupOpen)) { state.sheet = false; state.glossary = false; state.matchupOpen = false; render(); } });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && (state.sheet || state.glossary || state.matchupOpen || state.valuePid)) { state.sheet = false; state.glossary = false; state.matchupOpen = false; state.valuePid = null; render(); } });
 
   (async function init() {
     if (PREVIEW) { state.demo = PREVIEW; state.mode = 'demo'; state.live = null; render(); return; }
