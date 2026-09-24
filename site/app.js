@@ -86,7 +86,7 @@
     const lead = o.slot ? `<span class="slot">${esc(o.slot.replace('SUPER_FLEX', 'SFLX').replace('WRRB_FLEX', 'W/R').replace('REC_FLEX', 'W/T'))}</span>` : `<span class="lead"><span class="pos pos-${P.pos}">${P.pos}</span></span>`;
     const num = noProj || eff === 0 ? '<b class="dim">–</b>' : `<b>${f1(eff)}</b>`;
     const showVal = ctx.dyn && o.value !== false && P.pos !== 'K' && P.pos !== 'DEF';
-    const under = showVal ? `<small><span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span></small>` : '<small>adj proj</small>';
+    const under = showVal ? `<small><span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span></small>` : '<small>proj</small>';
     const posTag = o.slot ? `<span class="pos pos-${P.pos}">${P.pos}</span>` : '';
     return `<div class="prow">${lead}<div class="pmain"><div class="pname">${posTag}<span class="t">${esc(P.n)}</span>${injBadge(P.inj)}</div><div class="pmeta">${esc(o.sub || meta)}</div></div><div class="pnum">${num}${under}</div></div>`;
   }
@@ -149,7 +149,7 @@
           ${c.verdict.reasons.length ? reasonList(ctx, c.verdict.reasons) : '<p class="hint">No usage or form edge either way. Go with the higher projection.</p>'}</div>`).join('')}</section>`;
     }
     out += `<section>${sectionH('Full best lineup', f1(adv.optimal.total))}<div class="card list">${adv.optimal.slots.map((r) => (r.pid ? playerRow(ctx, r.pid, { slot: r.slot }) : emptyRow(r.slot))).join('')}</div>
-      <p class="hint">Points blend 70% of the projection with 30% of the last three games, then discount injuries. Bye weeks and Out players count as zero.</p></section>`;
+      <p class="hint">Points are Sleeper's own weekly projection, discounted for injury status. Bye weeks and Out players count as zero. Recent-form and usage trends are called out separately on toss-ups and swaps above.</p></section>`;
     return out;
   }
 

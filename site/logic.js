@@ -38,6 +38,10 @@
     return { D, lg, sc: lg.scoring, players, hasProj, dyn: lg.format !== 'redraft', cache: new Map(), vcache: new Map(), _repl: null };
   }
 
+  // The headline number is Sleeper's own projection (discounted for injury status),
+  // not a blend with recent form. Recent-form trends still surface separately as
+  // reasoning on close calls and swaps (see facts()/verdict() below) instead of
+  // silently moving the main number.
   function effOf(ctx, pid) {
     if (ctx.cache.has(pid)) return ctx.cache.get(pid);
     const P = ctx.players[pid];
@@ -45,14 +49,7 @@
     if (P) {
       const pj = P.p ? P.p[ctx.sc] : null;
       const fm = form(P, ctx.sc);
-      const n = ((P.r && P.r[ctx.sc]) || []).length;
-      let b = 0;
-      if (pj != null) {
-        // Weight recent form by how many games back it up, so one early-season
-        // outlier game can't swamp the real projection (full weight needs 3 games).
-        const w = fm != null ? 0.3 * Math.min(n, 3) / 3 : 0;
-        b = fm != null ? (1 - w) * pj + w * fm : pj;
-      } else if (!ctx.hasProj && fm != null) b = fm;
+      const b = pj != null ? pj : (!ctx.hasProj && fm != null ? fm : 0);
       v = b * injFactor(P.inj);
     }
     ctx.cache.set(pid, v);
