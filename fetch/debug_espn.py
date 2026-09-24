@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Temporary diagnostic: probe ESPN's undocumented Fantasy Football API for the
-user's real leagues, to discover response shapes (season/week, scoring settings,
-roster/lineup slot IDs, player projection format) before writing real parsing
-code. Not for permanent use -- delete after use."""
+"""Temporary diagnostic #2: targeted probe for ESPN player stats/projection
+shape and matchup scoring, after probe #1 got truncated before reaching them.
+Not for permanent use -- delete after use."""
 import json
 import os
 
@@ -18,10 +17,7 @@ s.cookies.set("SWID", SWID, domain=".espn.com")
 s.cookies.set("espn_s2", ESPN_S2, domain=".espn.com")
 s.headers["User-Agent"] = "fantasy-hq-debug/1.0"
 
-HOSTS = [
-    f"https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{SEASON}/segments/0/leagues",
-    f"https://fantasy.espn.com/apis/v3/games/ffl/seasons/{SEASON}/segments/0/leagues",
-]
+BASE = f"https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{SEASON}/segments/0/leagues"
 
 
 def get(url, params=None, headers=None):
@@ -30,71 +26,55 @@ def get(url, params=None, headers=None):
     return r
 
 
-def league_base(lid):
-    for h in HOSTS:
-        r = get(f"{h}/{lid}", params={"view": "mSettings"})
-        if r.status_code == 200:
-            return h
-        print("  body:", r.text[:300])
-    return None
-
-
 for lid in LEAGUE_IDS:
     print(f"\n===== LEAGUE {lid} =====")
-    base = league_base(lid)
-    if not base:
-        print("Could not reach this league on any host.")
-        continue
-
-    r = get(f"{base}/{lid}", params={"view": ["mSettings", "mTeam", "mRoster", "mMatchup", "mStatus"]})
+    r = get(f"{BASE}/{lid}", params={"view": ["mSettings", "mTeam", "mRoster", "mMatchupScore", "mStatus"]})
     if r.status_code != 200:
         print("BODY:", r.text[:500])
         continue
     d = r.json()
-    print("top-level keys:", list(d.keys()))
-    print("status:", json.dumps(d.get("status", {}), indent=2)[:600])
-
-    settings = d.get("settings", {})
-    print("league name:", settings.get("name"))
-    sc = settings.get("scoringSettings", {})
-    print("scoringSettings keys:", list(sc.keys()))
-    print("scoringItems (first 25):", json.dumps(sc.get("scoringItems", [])[:25]))
-    roster_settings = settings.get("rosterSettings", {})
-    print("lineupSlotCounts:", json.dumps(roster_settings.get("lineupSlotCounts", {})))
-
-    teams = d.get("teams", [])
-    print(f"{len(teams)} teams")
-    for t in teams[:4]:
-        print("  team", t.get("id"), t.get("name"), t.get("location"), t.get("nickname"), "owners:", t.get("owners"))
+    print("league scoringPeriodId:", d.get("scoringPeriodId"))
+    print("status.currentMatchupPeriod:", d.get("status", {}).get("currentMatchupPeriod"))
+    print("scoringType:", d.get("settings", {}).get("scoringSettings", {}).get("scoringType"))
+    items = d.get("settings", {}).get("scoringSettings", {}).get("scoringItems", [])
+    print(f"scoringItems count: {len(items)}")
+    rec = [it for it in items if it.get("statId") == 53]
+    print("reception (statId 53) scoring item:", rec)
+    print("FULL scoringItems:", json.dumps(items))
 
     myswid = SWID.strip("{}").lower()
+    teams = d.get("teams", [])
     mine = None
     for t in teams:
         owners = [str(o).strip("{}").lower() for o in (t.get("owners") or [])]
         if myswid in owners:
             mine = t
             break
-    print("MY TEAM id:", mine.get("id") if mine else None)
-    if mine:
-        roster = (mine.get("roster") or {}).get("entries", [])
-        print(f"my roster entries: {len(roster)}")
-        if roster:
-            print("sample entry:", json.dumps(roster[0], indent=2)[:2000])
+    if not mine:
+        print("Could not find my team")
+        continue
+    print("my team id:", mine.get("id"))
+    roster = (mine.get("roster") or {}).get("entries", [])
+    for e in roster[:3]:
+        p = e.get("playerPoolEntry", {}).get("player", {})
+        print(f"\n-- {p.get('fullName')} pos={p.get('defaultPositionId')} lineupSlotId={e.get('lineupSlotId')} --")
+        stats = p.get("stats", [])
+        print(f"stats entries: {len(stats)}")
+        for st in stats:
+            summary = {k: st.get(k) for k in ("scoringPeriodId", "statSourceId", "statSplitTypeId", "appliedTotal", "seasonId")}
+            print("  ", json.dumps(summary))
+        # show one full projected-current-week entry if present
+        cur_week = d.get("scoringPeriodId")
+        proj = next((st for st in stats if st.get("statSourceId") == 1 and st.get("scoringPeriodId") == cur_week), None)
+        if proj:
+            print("  PROJECTED THIS WEEK FULL:", json.dumps(proj)[:1500])
+        actual = next((st for st in stats if st.get("statSourceId") == 0 and st.get("scoringPeriodId") == cur_week), None)
+        if actual:
+            print("  ACTUAL THIS WEEK FULL:", json.dumps(actual)[:1500])
 
     sched = d.get("schedule", [])
-    print(f"schedule entries: {len(sched)}")
-    if sched:
-        print("sample matchup:", json.dumps(sched[0], indent=2)[:600])
-
-    filt = {"players": {"filterStatus": {"value": ["FREEAGENT", "WAIVERS", "ONTEAM"]},
-                         "limit": 3, "sortPercOwned": {"sortPriority": 1, "sortAsc": False}}}
-    r2 = get(f"{base}/{lid}", params={"view": "kona_player_info"}, headers={"x-fantasy-filter": json.dumps(filt)})
-    print("player_info status:", r2.status_code)
-    if r2.status_code == 200:
-        d2 = r2.json()
-        players = d2.get("players", [])
-        print(f"{len(players)} players returned")
-        if players:
-            print("sample player:", json.dumps(players[0], indent=2)[:2500])
-    else:
-        print("player_info body:", r2.text[:300])
+    cur_mp = d.get("status", {}).get("currentMatchupPeriod")
+    my_id = mine.get("id")
+    my_matchup = next((m for m in sched if m.get("matchupPeriodId") == cur_mp and
+                        (m.get("home", {}).get("teamId") == my_id or m.get("away", {}).get("teamId") == my_id)), None)
+    print("\nmy current matchup:", json.dumps(my_matchup, indent=2)[:2000] if my_matchup else None)
