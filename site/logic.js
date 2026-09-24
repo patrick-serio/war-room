@@ -231,6 +231,23 @@
   }
 
   // ---------- value ----------
+  // Keeper-round discount, same shape as ageMult() -- a ratio, not a flat
+  // subtraction. PICK_VALUE (45/24/13/7/4/3) is calibrated for season-long
+  // dynasty asset value; subtracting it directly from a single-week vor*5
+  // metric put it on the wrong scale and wiped out every early-round
+  // keeper's value (the best players, exactly backwards). This keeps a
+  // strong performer's value proportionate to his real production at any
+  // keeper cost, while still discounting round 1 more than round 15.
+  function keeperMult(rd) {
+    if (rd == null) return 1;
+    if (rd <= 1) return 0.75;
+    if (rd === 2) return 0.82;
+    if (rd === 3) return 0.88;
+    if (rd === 4) return 0.92;
+    if (rd === 5) return 0.95;
+    return 0.98;
+  }
+
   function ageMult(pos, age) {
     if (age == null) return 1;
     switch (pos) {
@@ -276,12 +293,11 @@
       else {
         const vor = Math.max(0, effOf(ctx, pid) - replacement(ctx)[P.pos]) * 5;
         if (ctx.dyn && P.kprd != null) {
-          // Keeper league (ESPN): no age/dynasty-rank data, but we know the
-          // draft round he'd cost to keep -- same PICK_VALUE scale used for
-          // real dynasty picks. A player who clearly outproduces that cost
-          // is valuable to hold/acquire; one who barely clears it isn't
-          // worth the pick you'd forfeit to keep him.
-          v = Math.max(0, vor - (PICK_VALUE[P.kprd] || 3));
+          // Keeper league (ESPN): no age/dynasty-rank data, but the round
+          // he'd cost to keep is a good long-term signal -- discount
+          // proportionally to his real production, same shape as the
+          // age-based branch below.
+          v = 0.6 * vor * keeperMult(P.kprd);
         } else if (ctx.dyn && P.rank != null) {
           const base = 100 * Math.exp(-P.rank / 90);
           v = 0.85 * base * ageMult(P.pos, P.age) + 0.15 * vor;
