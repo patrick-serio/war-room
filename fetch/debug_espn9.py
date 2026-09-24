@@ -19,24 +19,29 @@ def main():
     season = 2026
     base = espn.league_base(session, LEAGUE_ID, season)
 
-    for view in ["mTransactions2", "mPendingTransactions", "kona_league_communication"]:
-        print(f"\n=== view={view} ===")
-        try:
-            d = espn.http_get(session, f"{base}/{LEAGUE_ID}", params={"view": view})
-        except Exception as e:
-            print(f"failed: {e}")
-            continue
-        print(f"top-level keys: {list(d.keys())}")
-        txs = d.get("transactions", [])
-        print(f"transactions: {len(txs)}")
-        chase_txs = [t for t in txs if any(
-            item.get("playerId") == CHASE_ID for item in t.get("items", [])
-        )]
-        print(f"transactions mentioning Chase (id {CHASE_ID}): {len(chase_txs)}")
-        for t in chase_txs[:3]:
-            print(json.dumps(t))
-        if txs and not chase_txs:
-            print(f"sample transaction shape: {json.dumps(txs[0])}")
+    filt = {"transactions": {"filterType": {"value": ["WAIVER", "FREEAGENT", "ROSTER", "DRAFT"]},
+                             "sortProcessDate": {"sortPriority": 1, "sortAsc": True}, "limit": 2000}}
+    print("=== mTransactions2 with broad filter ===")
+    try:
+        d = espn.http_get(session, f"{base}/{LEAGUE_ID}", params={"view": "mTransactions2"},
+                           headers={"x-fantasy-filter": json.dumps(filt)})
+    except Exception as e:
+        print(f"failed: {e}")
+        return
+    txs = d.get("transactions", [])
+    print(f"transactions: {len(txs)}")
+    types = {}
+    for t in txs:
+        types[t.get("type")] = types.get(t.get("type"), 0) + 1
+    print(f"type distribution: {types}")
+    keeper_items = [(t, item) for t in txs for item in t.get("items", []) if item.get("isKeeper")]
+    print(f"items with isKeeper=true: {len(keeper_items)}")
+    for t, item in keeper_items[:5]:
+        print(json.dumps({"txType": t.get("type"), "teamId": t.get("teamId"), "processDate": t.get("processDate"), "item": item}))
+    chase_txs = [t for t in txs if any(item.get("playerId") == CHASE_ID for item in t.get("items", []))]
+    print(f"\ntransactions mentioning Chase (id {CHASE_ID}): {len(chase_txs)}")
+    for t in chase_txs:
+        print(json.dumps(t))
 
 
 if __name__ == "__main__":
