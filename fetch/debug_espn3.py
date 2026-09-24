@@ -1,0 +1,70 @@
+"""Temporary diagnostic: fetch the ACTUAL deployed site/data/leagues.json
+from the live GitHub Pages URL and inspect exactly what's being served for
+the players the user says are still wrong, plus re-derive the same values
+via the production code path (espn.fetch(), not hand-rolled calls) for
+comparison, since the user says a fresh private-browser pull-to-refresh
+still shows stale numbers -- ruling out browser/tab caching entirely."""
+import json
+import os
+import sys
+import urllib.request
+
+sys.path.insert(0, os.path.dirname(__file__))
+import espn  # noqa: E402
+
+LIVE_URL = "https://patrick-serio.github.io/war-room/data/leagues.json"
+NAMES = ["Josh Allen", "Fairbairn"]
+
+
+def main():
+    print(f"Fetching live deployed data: {LIVE_URL}")
+    req = urllib.request.Request(LIVE_URL, headers={"Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        live = json.loads(r.read())
+
+    print(f"generated_at / fetched_at fields: { {k: v for k, v in live.items() if 'at' in k.lower() or 'time' in k.lower()} }")
+    print(f"notes: {live.get('notes')}")
+
+    leagues = live.get("leagues", [])
+    print(f"\ntotal leagues in live payload: {len(leagues)}")
+    for lg in leagues:
+        print(f"  - {lg.get('id')} / {lg.get('name')} / platform={lg.get('platform')} / scoring_settings={lg.get('scoring_settings')}")
+
+    br = next((l for l in leagues if "610033022" in str(l.get("id"))), None)
+    if not br:
+        print("Belichicks Receivers league NOT FOUND in live payload")
+        return
+    print(f"\nBelichicks Receivers found: id={br['id']} scoring_settings={br['scoring_settings']}")
+
+    players = live.get("players", {})
+    print(f"total players in live payload: {len(players)}")
+
+    for pid, p in players.items():
+        nm = p.get("n", "")
+        if any(n.lower() in nm.lower() for n in NAMES) and p.get("tm") in (None, "BUF", "HOU"):
+            print(f"\nLIVE DEPLOYED: {pid} -> {json.dumps(p)}")
+
+    # find Rams D/ST specifically (posId 16 DEF on Rams)
+    for pid, p in players.items():
+        if p.get("pos") == "DEF" and "Rams" in p.get("n", ""):
+            print(f"\nLIVE DEPLOYED: {pid} -> {json.dumps(p)}")
+
+    # now re-derive fresh via the REAL production entrypoint (espn.fetch), not hand-rolled calls
+    print("\n--- re-deriving via espn.fetch() (the actual function build_data.py calls) ---")
+    import requests
+    state = requests.get("https://api.sleeper.app/v1/state/nfl", timeout=30).json()
+    season, week = int(state.get("season")), int(state.get("week") or 0)
+    print(f"state: season={season} week={week}")
+    notes = []
+    fresh_leagues, fresh_players = espn.fetch(["610033022"], season, week, notes)
+    print(f"notes from espn.fetch(): {notes}")
+    for lg in fresh_leagues:
+        print(f"fresh league: {lg['id']} scoring_settings={lg['scoring_settings']}")
+    for pid, p in fresh_players.items():
+        nm = p.get("n", "")
+        if any(n.lower() in nm.lower() for n in NAMES):
+            print(f"FRESH via espn.fetch(): {pid} -> {json.dumps(p)}")
+
+
+if __name__ == "__main__":
+    main()
