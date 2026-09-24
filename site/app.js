@@ -86,7 +86,7 @@
     const lead = o.slot ? `<span class="slot">${esc(o.slot.replace('SUPER_FLEX', 'SFLX').replace('WRRB_FLEX', 'W/R').replace('REC_FLEX', 'W/T'))}</span>` : `<span class="lead"><span class="pos pos-${P.pos}">${P.pos}</span></span>`;
     const num = noProj || eff === 0 ? '<b class="dim">–</b>' : `<b>${f1(eff)}</b>`;
     const showVal = ctx.dyn && o.value !== false && P.pos !== 'K' && P.pos !== 'DEF';
-    const under = showVal ? `<small><span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span></small>` : '<small>proj</small>';
+    const under = showVal ? `<small><span class="val">Value ${Math.round(FF.valueOf(ctx, pid))}</span></small>` : '<small>adj proj</small>';
     const posTag = o.slot ? `<span class="pos pos-${P.pos}">${P.pos}</span>` : '';
     return `<div class="prow">${lead}<div class="pmain"><div class="pname">${posTag}<span class="t">${esc(P.n)}</span>${injBadge(P.inj)}</div><div class="pmeta">${esc(o.sub || meta)}</div></div><div class="pnum">${num}${under}</div></div>`;
   }

@@ -45,9 +45,14 @@
     if (P) {
       const pj = P.p ? P.p[ctx.sc] : null;
       const fm = form(P, ctx.sc);
+      const n = ((P.r && P.r[ctx.sc]) || []).length;
       let b = 0;
-      if (pj != null) b = fm != null ? 0.7 * pj + 0.3 * fm : pj;
-      else if (!ctx.hasProj && fm != null) b = fm;
+      if (pj != null) {
+        // Weight recent form by how many games back it up, so one early-season
+        // outlier game can't swamp the real projection (full weight needs 3 games).
+        const w = fm != null ? 0.3 * Math.min(n, 3) / 3 : 0;
+        b = fm != null ? (1 - w) * pj + w * fm : pj;
+      } else if (!ctx.hasProj && fm != null) b = fm;
       v = b * injFactor(P.inj);
     }
     ctx.cache.set(pid, v);
