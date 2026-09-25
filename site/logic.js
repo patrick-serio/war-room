@@ -315,7 +315,8 @@
         result = {
           v: r1(0.6 * vorK * mult),
           parts: [
-            { text: `${r1(vorK)} pts/wk over replacement` },
+            { text: `${r1(vorK / 5)} pts/wk over replacement` },
+            { text: '× 5 scale' },
             { text: `× ${mult} keeper-cost discount (Round ${P.kprd})` },
             { text: '× 0.6 scale' },
           ],
@@ -328,7 +329,7 @@
           parts: [
             { text: `Dynasty rank #${P.rank} → ${r1(base)} base value (85% weight)` },
             { text: `× ${am} age curve (age ${P.age != null ? P.age : 'unknown'})` },
-            { text: `+ ${r1(vor)} pts/wk over replacement (15% weight)` },
+            { text: `+ ${r1(vor / 5)} pts/wk over replacement × 5 scale (15% weight)` },
           ],
         };
       } else if (ctx.dyn) {
@@ -336,7 +337,8 @@
         result = {
           v: r1(0.6 * vor * am),
           parts: [
-            { text: `${r1(vor)} pts/wk over replacement` },
+            { text: `${r1(vor / 5)} pts/wk over replacement` },
+            { text: '× 5 scale' },
             { text: `× ${am} age curve (age ${P.age != null ? P.age : 'unknown'})` },
             { text: '× 0.6 scale' },
           ],
@@ -344,7 +346,10 @@
       } else {
         result = {
           v: r1(vor),
-          parts: [{ text: `${r1(vor)} pts/wk over the best player you could pick up on waivers` }],
+          parts: [
+            { text: `${r1(vor / 5)} pts/wk over the best player you could pick up on waivers` },
+            { text: '× 5 scale' },
+          ],
         };
       }
     }
