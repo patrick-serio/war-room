@@ -84,6 +84,22 @@
     return v;
   }
 
+  // Once a player's game has actually produced stats this week, his real score
+  // is known and the lineup can no longer move him (Sleeper/ESPN both lock a
+  // player at his own kickoff, not at the weekly deadline). "Has recorded
+  // stats" is a slightly conservative proxy for "his game has started" -- it
+  // can lag kickoff by a play or two, but it never falsely locks someone whose
+  // game hasn't begun, which is the direction that matters here.
+  function isLocked(ctx, pid) {
+    const P = ctx.players[pid];
+    return !!(P && P.live);
+  }
+  function weekPtsOf(ctx, pid) {
+    const P = ctx.players[pid];
+    if (P && P.live) return scoreOf(P.live, ctx.lg.scoring_settings);
+    return projOf(ctx, pid);
+  }
+
   // ---------- roster helpers ----------
   const teamOf = (lg, rid) => lg.teams.find((t) => t.roster_id === rid);
   const myTeam = (ctx) => teamOf(ctx.lg, ctx.lg.me);
@@ -99,16 +115,29 @@
   const unknownSlots = (lg) => rawSlots(lg).filter((s) => !ELIG[s]);
 
   // ---------- lineup ----------
-  function optimalLineup(ctx, pids) {
+  // opts.pinned (Map of slot idx -> pid) forces already-played starters to
+  // stay exactly where they are, scored on their real result. opts.excluded
+  // (Set of pid) keeps already-played bench players out of the running --
+  // real games can't be un-played, so neither can move this week.
+  function optimalLineup(ctx, pids, opts) {
+    const pin = (opts && opts.pinned) || new Map();
+    const excl = (opts && opts.excluded) || new Set();
+    const pinnedPids = new Set(pin.values());
     const slots = rawSlots(ctx.lg).map((s, i) => ({ s, i })).filter((x) => ELIG[x.s]);
     slots.sort((a, b) => SLOT_RANK[a.s] - SLOT_RANK[b.s] || a.i - b.i);
-    const pool = pids.filter((p) => ctx.players[p]).sort((a, b) => effOf(ctx, b) - effOf(ctx, a));
-    const used = new Set();
+    const pool = pids.filter((p) => ctx.players[p] && !pinnedPids.has(p) && !excl.has(p)).sort((a, b) => effOf(ctx, b) - effOf(ctx, a));
+    const used = new Set(pinnedPids);
     const out = [];
     let total = 0;
     for (const { s, i } of slots) {
+      if (pin.has(i)) {
+        const pid = pin.get(i);
+        total += weekPtsOf(ctx, pid);
+        out.push({ slot: s, idx: i, pid, locked: true });
+        continue;
+      }
       const pid = pool.find((p) => !used.has(p) && ELIG[s].includes(ctx.players[p].pos) && effOf(ctx, p) > 0) || null;
-      if (pid) { used.add(pid); total += projOf(ctx, pid); }
+      if (pid) { used.add(pid); total += weekPtsOf(ctx, pid); }
       out.push({ slot: s, idx: i, pid });
     }
     out.sort((a, b) => a.idx - b.idx);
@@ -123,7 +152,7 @@
     slots.forEach((s, i) => {
       if (!ELIG[s]) return;
       const pid = t.starters[i] && t.starters[i] !== '0' ? t.starters[i] : null;
-      if (pid) total += projOf(ctx, pid);
+      if (pid) total += weekPtsOf(ctx, pid);
       rows.push({ slot: s, idx: i, pid });
     });
     return { slots: rows, total };
@@ -132,7 +161,10 @@
   function lineupAdvice(ctx) {
     const team = myTeam(ctx);
     const cur = currentLineup(ctx, team);
-    const opt = optimalLineup(ctx, activeOf(team));
+    const pinned = new Map();
+    cur.slots.forEach((row) => { if (row.pid && isLocked(ctx, row.pid)) pinned.set(row.idx, row.pid); });
+    const excluded = new Set(activeOf(team).filter((p) => isLocked(ctx, p) && ![...pinned.values()].includes(p)));
+    const opt = optimalLineup(ctx, activeOf(team), { pinned, excluded });
     const curSet = new Set(cur.slots.map((x) => x.pid).filter(Boolean));
     const optSet = new Set(opt.slots.map((x) => x.pid).filter(Boolean));
     const ins = [...optSet].filter((p) => !curSet.has(p)).sort((a, b) => effOf(ctx, b) - effOf(ctx, a));
@@ -159,10 +191,11 @@
   }
 
   function closeCalls(ctx, team, curSet, optSet) {
-    const bench = benchOf(team);
+    const bench = benchOf(team).filter((p) => !isLocked(ctx, p));
     const seen = new Set();
     const out = [];
     for (const s of curSet) {
+      if (isLocked(ctx, s)) continue;
       const sp = ctx.players[s];
       for (const b of bench) {
         const bp = ctx.players[b];
@@ -610,7 +643,7 @@
     const advice = lineupAdvice(ctx);
     const best = (slot, exclude) => {
       const elig = ELIG[slot];
-      return benchOf(me).filter((p) => !exclude.has(p) && ctx.players[p] && elig.includes(ctx.players[p].pos) && effOf(ctx, p) > 0).sort((a, b) => effOf(ctx, b) - effOf(ctx, a))[0];
+      return benchOf(me).filter((p) => !exclude.has(p) && !isLocked(ctx, p) && ctx.players[p] && elig.includes(ctx.players[p].pos) && effOf(ctx, p) > 0).sort((a, b) => effOf(ctx, b) - effOf(ctx, a))[0];
     };
     advice.current.slots.forEach((row) => {
       if (!row.pid) {
@@ -658,7 +691,7 @@
   }
 
   return {
-    ELIG, makeCtx, effOf, projOf, valueOf, valueBreakdown, pickValue, replacement, optimalLineup, currentLineup, lineupAdvice,
+    ELIG, makeCtx, effOf, projOf, weekPtsOf, isLocked, valueOf, valueBreakdown, pickValue, replacement, optimalLineup, currentLineup, lineupAdvice,
     waivers, positionReport, tradeOffers, matchup, buildAlerts, activeOf, benchOf, myTeam, teamOf, unknownSlots, rawSlots,
     facts, ageMult, r1,
   };

@@ -134,6 +134,28 @@ def fetch_recent(season, week, stat_keys, lookback=4):
     return per
 
 
+def fetch_live(season, week, stat_keys):
+    """pid -> raw stat dict for the current, possibly in-progress week -- {}
+    for a player whose game hasn't produced stats yet. Sleeper's stats
+    endpoint updates live during games, the same one fetch_recent() reads
+    for already-completed weeks, just pointed at the current week instead."""
+    if week < 1:
+        return {}
+    try:
+        data = http_get(f"{PROJ_API}/stats/nfl/{season}/{week}",
+                        params=pos_params([("order_by", "pts_ppr")]))
+    except RuntimeError as e:
+        NOTES.append(f"Live stats unavailable ({e})")
+        return {}
+    out = {}
+    for it in data:
+        pid = str(it.get("player_id", ""))
+        st = raw_stats(it.get("stats") or {}, stat_keys)
+        if pid and st:
+            out[pid] = st
+    return out
+
+
 def age_of(p):
     if p.get("age"):
         return int(p["age"])
@@ -147,7 +169,7 @@ def age_of(p):
     return None
 
 
-def build_player(pid, base, proj, recent):
+def build_player(pid, base, proj, recent, live=None):
     pos = base.get("position")
     if pos == "DEF":
         name, tm = f"{pid} D/ST", pid
@@ -168,6 +190,7 @@ def build_player(pid, base, proj, recent):
         "opp": p.get("opp"),
         "p": p.get("st") if proj else None,
         "r": r, "tgt": tgt, "tch": tch,
+        "live": live or None,
     }
 
 
@@ -303,6 +326,7 @@ def main():
     recent = fetch_recent(season, pweek, stat_keys)
     if not recent and pweek > 1:
         NOTES.append("Recent-form stats unavailable; form and usage trends are hidden")
+    live = fetch_live(season, week, stat_keys)
 
     trending = []
     try:
@@ -357,7 +381,7 @@ def main():
         base = players_db.get(pid)
         if not base or base.get("position") not in POS:
             continue
-        players[pid] = build_player(pid, base, proj.get(pid), recent.get(pid))
+        players[pid] = build_player(pid, base, proj.get(pid), recent.get(pid), live.get(pid))
 
     missing = {p for lg in leagues for t in lg["teams"] for p in t["players"]} - set(players)
     if missing:

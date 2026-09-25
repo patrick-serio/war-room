@@ -53,6 +53,21 @@ t('lineup advice finds the real swaps and total gain', () => {
   assert.ok(outs.includes('w4'), 'bye WR is swapped out');
 });
 
+t('a player who already scored locks into his slot instead of being swapped out', () => {
+  // r3 (projected 9, started at RB) already played and actually scored 25 --
+  // without locking, r4 (bench, projected 15.5) would normally swap in for him
+  // (see the swap test above). Once he's live, that must no longer happen,
+  // and his real score should count instead of his stale projection.
+  const lockedPlayers = { ...players, r3: mk('Ray RB3', 'RB', 9, { live: { pt: 25 } }) };
+  const lctx = FF.makeCtx({ ...D, players: lockedPlayers }, lg);
+  assert.strictEqual(FF.weekPtsOf(lctx, 'r3'), 25, 'locked player counts his actual score, not his projection');
+  assert.ok(FF.isLocked(lctx, 'r3'));
+  const a = FF.lineupAdvice(lctx);
+  assert.ok(!a.swaps.some((s) => s.out === 'r3'), 'locked starter must never be suggested to sit');
+  const r3Row = a.optimal.slots.find((s) => s.pid === 'r3');
+  assert.ok(r3Row && r3Row.locked, 'locked starter stays pinned in the optimal lineup');
+});
+
 t('alerts flag the bye WR and recommend the swap', () => {
   const al = FF.buildAlerts(ctx);
   assert.ok(al.some((x) => x.sev === 'now' && /no projection/.test(x.title)), JSON.stringify(al.map((a) => a.title)));

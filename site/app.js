@@ -81,17 +81,22 @@
     o = o || {};
     const P = ctx.players[pid];
     if (!P) return `<div class="prow"><span class="slot"></span><div class="pmain"><div class="pname"><span class="t">Unknown player ${esc(pid)}</span></div></div><div class="pnum"></div></div>`;
+    const locked = FF.isLocked(ctx, pid);
     const proj = FF.projOf(ctx, pid);
     const eff = FF.effOf(ctx, pid);
     const noProj = ctx.hasProj && !P.p && P.pos !== 'DEF';
     const meta = [P.tm || 'FA', P.opp ? 'Opp ' + P.opp : (noProj ? 'Bye or inactive' : ''), P.age ? P.age + 'y' : ''].filter(Boolean).join(' · ');
     const lead = o.slot ? `<span class="slot">${esc(o.slot.replace('SUPER_FLEX', 'SFLX').replace('WRRB_FLEX', 'W/R').replace('REC_FLEX', 'W/T'))}</span>` : `<span class="lead"><span class="pos pos-${P.pos}">${P.pos}</span></span>`;
-    const num = noProj || proj === 0 ? '<b class="dim">–</b>' : `<b>${f1(proj)}</b>`;
+    // Once his game has produced real stats, show what he actually scored
+    // instead of a stale pregame projection -- he's locked into this slot
+    // either way, so the projection is no longer the number that matters.
+    const num = locked ? `<b>${f1(FF.weekPtsOf(ctx, pid))}</b>` : (noProj || proj === 0 ? '<b class="dim">–</b>' : `<b>${f1(proj)}</b>`);
     const showVal = ctx.dyn && o.value !== false && P.pos !== 'K' && P.pos !== 'DEF';
     // Injury discount is a sub-value, not baked into the main number shown above --
     // shown alongside Value (dynasty) or in place of the plain "proj" label, never dropped for one or the other.
-    const hurt = proj > 0 && Math.abs(eff - proj) > 0.05;
+    const hurt = !locked && proj > 0 && Math.abs(eff - proj) > 0.05;
     const bits = [];
+    if (locked) bits.push('<span class="locked">Locked · actual</span>');
     if (showVal) bits.push(`<button type="button" class="val val-btn" data-act="value" data-id="${esc(pid)}">Value ${Math.round(FF.valueOf(ctx, pid))}</button>`);
     if (hurt) bits.push(`adj ${f1(eff)}`);
     if (!bits.length) bits.push('proj');
@@ -113,17 +118,18 @@
     const me = FF.myTeam(ctx);
     const m = FF.matchup(ctx);
     let out = '';
+    const cl = FF.currentLineup(ctx);
+    const anyLocked = cl.slots.some((r) => r.pid && FF.isLocked(ctx, r.pid));
     if (m) {
       const cls = Math.abs(m.margin) < 6 ? '' : (m.margin > 0 ? 'fav' : 'dog');
       const txt = Math.abs(m.margin) < 6 ? 'Toss-up' : (m.margin > 0 ? `Favored by ${f1(m.margin)}` : `Underdog by ${f1(-m.margin)}`);
       out += `<section>${sectionH('This week')}<div class="card match">
         <div class="side"><div class="tn">${esc(me.name)}</div><div class="pts">${f1(m.me)}</div></div><div class="vs">VS</div>
         <div class="side"><div class="tn">${esc(m.oppTeam.name)}</div><div class="pts">${f1(m.opp)}</div></div>
-        <div class="foot"><span>Projected with your current lineup</span><span class="${cls}">${txt}</span></div></div>
+        <div class="foot"><span>${anyLocked ? 'Live: actual + projected' : 'Projected with your current lineup'}</span><span class="${cls}">${txt}</span></div></div>
         <button class="btn" data-act="matchup" style="width:100%;margin-top:8px">See both starting lineups</button></section>`;
     }
-    const cl = FF.currentLineup(ctx);
-    out += `<section>${sectionH('Starters', f1(cl.total) + ' proj')}<div class="card list">${cl.slots.map((r) => (r.pid ? playerRow(ctx, r.pid, { slot: r.slot }) : emptyRow(r.slot))).join('')}</div></section>`;
+    out += `<section>${sectionH('Starters', f1(cl.total) + (anyLocked ? ' live' : ' proj'))}<div class="card list">${cl.slots.map((r) => (r.pid ? playerRow(ctx, r.pid, { slot: r.slot }) : emptyRow(r.slot))).join('')}</div></section>`;
     const bench = FF.benchOf(me).sort((a, b) => FF.effOf(ctx, b) - FF.effOf(ctx, a));
     out += `<section>${sectionH('Bench', bench.length)}<div class="card list">${bench.map((p) => playerRow(ctx, p)).join('') || '<div class="prow"><span class="hint">Nobody on the bench.</span></div>'}</div></section>`;
     if ((me.reserve || []).length) out += `<section>${sectionH('Injured reserve', me.reserve.length)}<div class="card list">${me.reserve.map((p) => playerRow(ctx, p)).join('')}</div></section>`;
@@ -159,7 +165,7 @@
           ${c.verdict.reasons.length ? reasonList(ctx, c.verdict.reasons) : '<p class="hint">No usage or form edge either way. Go with the higher projection.</p>'}</div>`).join('')}</section>`;
     }
     out += `<section>${sectionH('Full best lineup', f1(adv.optimal.total))}<div class="card list">${adv.optimal.slots.map((r) => (r.pid ? playerRow(ctx, r.pid, { slot: r.slot }) : emptyRow(r.slot))).join('')}</div>
-      <p class="hint">Points are Sleeper's own weekly projection, exactly as Sleeper shows it. An "adj" figure appears under a hurt player's number when his risk-adjusted value differs -- that adjustment (not the projection itself) is what decides whether he's worth starting. Bye weeks count as zero. Recent-form and usage trends are called out separately on toss-ups and swaps above.</p></section>`;
+      <p class="hint">Points are Sleeper's own weekly projection, exactly as Sleeper shows it. An "adj" figure appears under a hurt player's number when his risk-adjusted value differs -- that adjustment (not the projection itself) is what decides whether he's worth starting. Bye weeks count as zero. Recent-form and usage trends are called out separately on toss-ups and swaps above. Once a player's game has actually produced stats, "Locked · actual" replaces his projection with what he really scored, and he's left out of the moves above -- his slot can't change anymore this week.</p></section>`;
     return out;
   }
 
@@ -350,7 +356,7 @@
       ${side(me, FF.currentLineup(ctx, me))}
       <div style="height:14px"></div>
       ${side(m.oppTeam, FF.currentLineup(ctx, m.oppTeam))}
-      <div style="height:4px"></div><p class="hint">Both sides are each team's actual starters as currently set in Sleeper (not the optimal lineup), with the same Proj numbers used everywhere else. If a total looks wrong, check here for a starter with no Proj (bye or inactive, shown as "–"), an unexpected injury discount, or a player who shouldn't be starting.</p></div></div>`;
+      <div style="height:4px"></div><p class="hint">Both sides are each team's actual starters as currently set in Sleeper (not the optimal lineup). Anyone whose game has already produced stats shows "Locked · actual" and counts his real score; everyone else still shows Proj. If a total looks wrong, check here for a starter with no Proj (bye or inactive, shown as "–"), an unexpected injury discount, or a player who shouldn't be starting.</p></div></div>`;
   }
 
   function valueSheet(ctx, pid) {

@@ -123,6 +123,7 @@ def build_player(pid_prefix, pool_entry, week, season, pro_teams, pro_opp, draft
     pid = f"{pid_prefix}{p['id']}"
     stats = p.get("stats") or []
     proj = week_total(stats, 1, week, season)
+    live = week_total(stats, 0, week, season)
     recent = []
     for wk in range(max(1, week - 4), week):
         v = week_total(stats, 0, wk, season)
@@ -136,6 +137,7 @@ def build_player(pid_prefix, pool_entry, week, season, pro_teams, pro_opp, draft
         "p": {"pt": proj} if proj is not None else None,
         "r": recent, "tgt": [], "tch": [],
         "kprd": (draft_rounds or {}).get(p["id"]),
+        "live": {"pt": live} if live is not None else None,
     }
 
 

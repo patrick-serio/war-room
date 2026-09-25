@@ -101,6 +101,7 @@ h2 .n { font-family: var(--body); letter-spacing: 0; font-weight: 500; text-tran
 .val { font-size: 11px; font-weight: 600; color: var(--accent-ink); font-variant-numeric: tabular-nums; }
 .val-btn { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
 .dim { opacity: .55; }
+.locked { font-size: 11px; font-weight: 600; color: var(--good); }
 
 /* matchup */
 .match { padding: 14px 16px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 10px; }
